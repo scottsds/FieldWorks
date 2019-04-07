@@ -157,7 +157,7 @@ namespace SIL.FieldWorks.XWorks
 			// To do local testing set the WEBONARYSERVER environment variable to something like 192.168.33.10
 			var server = Environment.GetEnvironmentVariable("WEBONARYSERVER");
 			server = string.IsNullOrEmpty(server) ? "webonary.org" : server;
-			return string.Format("https://{0}.{1}/wp-json/webonary/import", siteName, server);
+			return string.Format("http://webonary.bombastic.org/webonary/wp-json/webonary/import");
 		}
 
 		internal void UploadToWebonary(string zipFileToUpload, UploadToWebonaryModel model, IUploadToWebonaryView view)
@@ -192,7 +192,7 @@ namespace SIL.FieldWorks.XWorks
 					}
 					else
 					{
-						const string errorMessage = "Unable to connect to Webonary.  Please check your username and password and your Internet connection.";
+						const string errorMessage = "Unable to connect to Webonary.  Please check your username and password and your Internet connection. BRO";
 						view.UpdateStatus(string.Format("An error occurred uploading your data: {0}{1}{2}:{3}",
 							errorMessage, Environment.NewLine, e.StatusCode, e.Message));
 					}
