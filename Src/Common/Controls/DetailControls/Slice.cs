@@ -1,26 +1,28 @@
-// Copyright (c) 2014 SIL International
+// Copyright (c) 2014-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FdoUi;
 using SIL.FieldWorks.LexText.Controls;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 using SIL.Utils;
 using XCore;
 
@@ -46,10 +48,10 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 	/// So, I went back to a Slice having a SplitContainer,
 	/// rather than the better option of it being a SplitContainer.
 	///</remarks>
-	public class Slice : SplitContainer, IxCoreColleague, IFWDisposable
+	public class Slice : SplitContainer, IxCoreColleague
 #else
 	///</remarks>
-	public class Slice : UserControl, IxCoreColleague, IFWDisposable
+	public class Slice : UserControl, IxCoreColleague
 #endif
 	{
 		#region Constants
@@ -91,7 +93,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		protected ICmObject m_obj; // The object that will be the context if our children are expanded, or for figuring
 		// what things can be inserted here.
 		protected object[] m_key; // Key indicates path of nodes and objects used to construct this.
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		// Indicates the 'weight' of object that starts at the top of this slice.
 		// By default a slice is just considered to be a field (of the same object as the one before).
 		protected ObjectWeight m_weight = ObjectWeight.field;
@@ -99,7 +101,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		protected IPersistenceProvider m_persistenceProvider;
 
 		protected Slice m_parentSlice;
-		private SplitContainer m_splitter;
+		private readonly SplitContainer m_splitter;
 
 		#endregion Data members
 
@@ -243,7 +245,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		/// <summary></summary>
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			get
 			{
@@ -464,8 +466,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		#region Construction and initialization
 
 		/// <summary></summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="TabStop is not implemented in Mono, but we set TabStop to false so it's not a problem.")]
 		public Slice()
 		{
 #if SLICE_IS_SPLITCONTAINER
@@ -742,8 +742,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		/// <summary></summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual void SetCurrentState(bool isCurrent)
 		{
 			CheckDisposed();
@@ -859,18 +857,23 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				sc.FixedPanel = FixedPanel.Panel2;
 			}
 
+			// REVIEW (Hasso) 2018.07: would it be better to check !parent.Controls.Contains(this)?
 			if (!isBeingReused)
 			{
 				parent.Controls.Add(this); // Parent will have to move it into the right place.
 				parent.Slices.Add(this);
 			}
-#if __MonoCS__ // FWNX-266
-			if (mainControl != null && mainControl.Visible == false)
+
+			if (Platform.IsMono)
 			{
-				// ensure Launcher Control is shown.
-				mainControl.Visible = true;
+				// FWNX-266
+				if (mainControl != null && mainControl.Visible == false)
+				{
+					// ensure Launcher Control is shown.
+					mainControl.Visible = true;
+				}
 			}
-#endif
+
 			SetSplitPosition();
 
 			// Don'f fire off all those size changed event handlers, unless it is really needed.
@@ -926,11 +929,27 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			if (!m_widthHasBeenSetByDataTree)
 				return;
 
+			// LT-18750 Calling OnSizeChanged in the base class sometimes resets the AutoScrollPosition to the top of the Slice (Windows).
+			// When m_splitter.Size is changed, it also has the same effect. It is possible that ScrollControlIntoView() is called
+			// in a method subscribed to an event in the base class, but my investigation was unsuccessful.
+			Point oldPoint = ContainingDataTree.AutoScrollPosition;
+			bool scrollChanged = false;
 			base.OnSizeChanged(e);
-
+			if (ContainingDataTree.AutoScrollPosition != oldPoint)
+			{
+				scrollChanged = true;
+			}
+			int verticalAdjustment = Size.Height - m_splitter.Size.Height;
 			// This should be done by setting DockStyle to Fill but that somehow doesn't always fix the
 			// height of the splitter's panels.
 			m_splitter.Size = Size;
+			if (scrollChanged)
+			{
+				bool verticalScrollChangedCorrectly = ContainingDataTree.AutoScrollPosition.Y - oldPoint.Y == -verticalAdjustment;
+				if (!verticalScrollChangedCorrectly)
+					// Set the AutoScrollPosition to scroll the distance reflecting the change to the SplitContainer
+					ContainingDataTree.AutoScrollPosition = new Point(-oldPoint.X, -oldPoint.Y + verticalAdjustment);
+			}
 			// This definitely seems as if it shouldn't be necessary at all. And if it were necessary,
 			// it should be fine to just call PerformLayout at once. But it doesn't work. Dragging the splitter
 			// of a multi-line view in a way that changes its height somehow leaves the panels of the splitter
@@ -1408,8 +1427,13 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		private string GetGeneratedHelpTopicId(string helpTopicPrefix, String fieldName)
 		{
-			string className = Cache.DomainDataByFlid.MetaDataCache.GetClassName(Object.ClassID);
-			string toolName = m_propertyTable.GetStringProperty("currentContentControl", null);
+			var ownerClassName = Object.Owner == null ? null : Object.Owner.ClassName;
+			var className = Cache.DomainDataByFlid.MetaDataCache.GetClassName(Object.ClassID);
+			// Distinguish the Example (sense) field and the expanded example (LexExtendedNote) field
+			className = (fieldName == "Example" && ownerClassName == "LexExtendedNote") ? "LexExtendedNote" : className;
+			// Distinguish the Translation (sense) field and the expanded example (LexExtendedNote) field
+			className = fieldName.StartsWith("Translation")&& (ownerClassName == "LexExtendedNote" || (Object.Owner != null && Object.Owner.ClassName == "LexExtendedNote")) ? "LexExtendedNote" : className;
+			var toolName = m_propertyTable.GetStringProperty("currentContentControl", null);
 
 			String generatedHelpTopicID;
 
@@ -1599,8 +1623,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "parentSlice is a reference")]
 		bool IsDescendant(Slice slice)
 		{
 			var parentSlice = slice.ParentSlice;
@@ -1624,8 +1646,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Collapse this node, which is at position iSlice in its parent.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldOrDummyAt() returns a reference")]
 		public virtual void Collapse(int iSlice)
 		{
 			CheckDisposed();
@@ -1748,8 +1768,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <param name="ihvoPosition">Position of this object in owning sequence;
 		/// or current position in cache, if a collection.</param>
 		/// <returns>true if this slice is part of an owning sequence property.</returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "cache is a reference")]
 		public bool GetSeqContext(out int hvoOwner, out int flid, out int ihvoPosition)
 		{
 			CheckDisposed();
@@ -1761,7 +1779,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			if (m_key == null)
 				return false;
 
-			FdoCache cache = ContainingDataTree.Cache;
+			LcmCache cache = ContainingDataTree.Cache;
 			var mdc = cache.DomainDataByFlid.MetaDataCache as IFwMetaDataCacheManaged;
 			ICmObjectRepository repo = cache.ServiceLocator.GetInstance<ICmObjectRepository>();
 			for (int inode = m_key.Length; --inode >= 0; )
@@ -1818,8 +1836,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <param name="hvoOwner">Owner of the object this slice is part of.</param>
 		/// <param name="flid">Owning atomic property this is part of.</param>
 		/// <returns>true if this slice is part of an owning atomic property.</returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "cache is a reference")]
 		public bool GetAtomicContext(out int hvoOwner, out int flid)
 		{
 			CheckDisposed();
@@ -1843,7 +1859,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						// HVO of the particular item we're editing.
 						var hvoItem = (int)(m_key[inode + 1]);
 						string attrName = node.Attributes["field"].Value;
-						FdoCache cache = ContainingDataTree.Cache;
+						LcmCache cache = ContainingDataTree.Cache;
 						flid = cache.DomainDataByFlid.MetaDataCache.GetFieldId2(
 							cache.ServiceLocator.GetInstance<ICmObjectRepository>().GetObject(hvoItem).Owner.ClassID,
 							attrName,
@@ -2014,7 +2030,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return false;
 		}
 
-		static internal int InsertObjectIntoVirtualBackref(FdoCache cache, Mediator mediator, PropertyTable propertyTable,
+		static internal int InsertObjectIntoVirtualBackref(LcmCache cache, Mediator mediator, PropertyTable propertyTable,
 			int hvoSlice, int clidNewObj, int flid)
 		{
 			var metadata = cache.ServiceLocator.GetInstance<IFwMetaDataCacheManaged>();
@@ -2128,7 +2144,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 					}
 				}
 			}
-			var slices = new Set<Slice>(ContainingDataTree.Slices);
+			var slices = new HashSet<Slice>(ContainingDataTree.Slices);
 
 			// Save DataTree for the finally block.  Note premature return below due to IsDisposed.  See LT-9005.
 			DataTree dtContainer = ContainingDataTree;
@@ -2267,8 +2283,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Focus the specified slice (or the first of its children that can accept focus).
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public Slice FocusSliceOrChild()
 		{
 			CheckDisposed();
@@ -2369,8 +2383,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// starting with the slice itself. An arbitrary maximum distance (currently 40) is imposed,
 		/// to minimize the time spent getting and using these; usually one of the first few is used.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldOrDummyAt() returns a reference")]
 		internal List<Slice> GetCloseSlices()
 		{
 			int index = IndexInContainer;
@@ -2415,6 +2427,11 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						// probably not needed, but safe...
 						if (ler.PrimaryLexemesRS.Contains(ContainingDataTree.Root))
 							ler.PrimaryLexemesRS.Remove(ContainingDataTree.Root);
+
+						ILexEntry entry;
+						entry = (ILexEntry)m_cache.ServiceLocator.GetObject(ler.OwningEntry.Hvo);
+						if (entry.EntryRefsOS.Contains(ler))
+							entry.EntryRefsOS.Remove(ler);
 					});
 				}
 			}
@@ -2424,8 +2441,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// gives the object hvo hat should be the target of Delete, copy, etc. for menus operating on this slice label.
 		/// </summary>
 		/// <returns>return 0 if this slice is supposed to operate on an atomic field which is currently empty.</returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		public ICmObject GetObjectForMenusToOperateOn()
 		{
 			CheckDisposed();
@@ -2435,7 +2450,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				XmlNodeList nodes = m_configurationNode.SelectNodes("atomic");
 				if (nodes == null || nodes.Count != 1)
 					throw new ConfigurationException("Expected to find a single <atomic> element in here", m_configurationNode);
-				string field = XmlUtils.GetManditoryAttributeValue(nodes[0], "field");
+				string field = XmlUtils.GetMandatoryAttributeValue(nodes[0], "field");
 				int flid = GetFlid(field);
 				Debug.Assert(flid != 0);
 				var hvo = m_cache.DomainDataByFlid.get_ObjectProp(m_obj.Hvo, flid);

@@ -1,24 +1,18 @@
-// Copyright (c) 2005-2013 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: SummaryDialogForm.cs
-// Responsibility:
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
 using XCore;
 
 namespace SIL.FieldWorks.FdoUi.Dialogs
@@ -40,14 +34,14 @@ namespace SIL.FieldWorks.FdoUi.Dialogs
 	/// should pop up to find a different entry to display with a new SummaryDialogForm.
 	/// </remarks>
 	/// ----------------------------------------------------------------------------------------
-	internal class SummaryDialogForm : Form, IFWDisposable
+	internal class SummaryDialogForm : Form
 	{
 		#region Member variables
 		private List<int> m_rghvo;
 		private int m_hvoSelected;		// object selected in the view.
 		private ITsString m_tssWf;
 		private XmlView m_xv;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private XCore.Mediator m_mediator;
 		private PropertyTable m_propertyTable;
 		private IHelpTopicProvider m_helpProvider;
@@ -104,7 +98,7 @@ namespace SIL.FieldWorks.FdoUi.Dialogs
 		/// <param name="mediator">The mediator.</param>
 		/// ------------------------------------------------------------------------------------
 		internal SummaryDialogForm(List<int> rghvo, ITsString tssForm, IHelpTopicProvider helpProvider,
-			string helpFileKey, IVwStylesheet styleSheet, FdoCache cache, Mediator mediator)
+			string helpFileKey, IVwStylesheet styleSheet, LcmCache cache, Mediator mediator, PropertyTable propertyTable)
 		{
 			InitializeComponent();
 			AccessibleName = GetType().Name;
@@ -113,6 +107,7 @@ namespace SIL.FieldWorks.FdoUi.Dialogs
 			m_rghvo = rghvo;
 			m_cache = cache;
 			m_mediator = mediator;
+			m_propertyTable = propertyTable;
 			Initialize(tssForm, helpProvider, helpFileKey, styleSheet);
 		}
 
@@ -271,7 +266,7 @@ namespace SIL.FieldWorks.FdoUi.Dialogs
 		/// <param name="styleSheet"></param>
 		/// <returns></returns>
 		/// ------------------------------------------------------------------------------------
-		private XmlView CreateSummaryView(List<int> rghvoEntries, FdoCache cache, IVwStylesheet styleSheet)
+		private XmlView CreateSummaryView(List<int> rghvoEntries, LcmCache cache, IVwStylesheet styleSheet)
 		{
 			// Make a decorator to publish the list of entries as a fake property of the LexDb.
 			int kflidEntriesFound = 8999950; // some arbitrary number not conflicting with real flids.

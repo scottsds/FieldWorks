@@ -1,21 +1,21 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;		// controls and etc...
 using System.Xml;
 using SIL.Media;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel.Infrastructure;
 using System.Text;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Widgets
@@ -107,9 +107,11 @@ namespace SIL.FieldWorks.Common.Widgets
 		/// </summary>
 		public bool RefreshDisplay()
 		{
+			SuspendLayout();
 			DisposeSoundControls(); // before we do the base refresh, which will layout, and possibly miss a deleted WS.
 			var ret = m_innerView.RefreshDisplay();
 			SetupSoundControls();
+			ResumeLayout();
 			return ret;
 		}
 
@@ -232,7 +234,7 @@ namespace SIL.FieldWorks.Common.Widgets
 		{
 			int index = m_soundControls.IndexOf(sc);
 			wsIndex = -1;
-			foreach (CoreWritingSystemDefinition ws in m_innerView.WritingSystems)
+			foreach (CoreWritingSystemDefinition ws in m_innerView.WritingSystemsToDisplay)
 			{
 				wsIndex++;
 				if (!ws.IsVoice)
@@ -253,12 +255,16 @@ namespace SIL.FieldWorks.Common.Widgets
 			base.OnLayout(levent);
 			if (m_innerView.VC == null || m_innerView.RootBox == null) // We can come in with no rootb from a dispose call.
 				return;
+			if (Visible)
+				m_innerView.RefreshDisplayIfPending(); // Reconstruct the innerView's RootBox only if it is pending.
 			int dpiX;
 			using (var graphics = CreateGraphics())
 			{
 				dpiX = (int)graphics.DpiX;
 			}
 			int indent = m_innerView.VC.m_mDxmpLabelWidth * dpiX / 72000 + 5; // 72000 millipoints/inch
+			if (m_soundControls.Count == 0)
+				SetupSoundControls();
 			foreach (var control in m_soundControls)
 			{
 				int wsIndex;
@@ -267,6 +273,7 @@ namespace SIL.FieldWorks.Common.Widgets
 				{
 					control.Left = indent;
 					control.Width = Width - indent;
+					control.Top = Height - indent + 5;
 					var sel = MultiStringSelectionUtils.GetSelAtStartOfWs(m_innerView.RootBox, m_innerView.Flid, wsIndex, ws);
 					if (sel != null)
 					{
@@ -275,8 +282,8 @@ namespace SIL.FieldWorks.Common.Widgets
 						// Leave control.Top zero and hope layout gets called again when we can make
 						// the selection successfully.
 						Rectangle selRect;
-						m_innerView.GetSoundControlRectangle(sel, out selRect);
-						control.Top = selRect.Top;
+						if (m_innerView.GetSoundControlRectangle(sel, out selRect))
+							control.Top = selRect.Top;
 					}
 					// Don't crash trying to bring to front if control is not a child control on Linux (FWNX-1348).
 					// If control.Parent is null, don't crash, and bring to front anyway on Windows (LT-15148).
@@ -296,8 +303,6 @@ namespace SIL.FieldWorks.Common.Widgets
 			m_soundControls.Clear();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-						Justification="soundFieldControl gets disposed in Dispose method")]
 		private void SetupSoundControls()
 		{
 			if (m_innerView.WritingSystemsToDisplay == null)
@@ -326,7 +331,7 @@ namespace SIL.FieldWorks.Common.Widgets
 				}
 				else
 				{
-					var mediaDir = FdoFileHelper.GetMediaDir(m_innerView.Cache.LangProject.LinkedFilesRootDir);
+					var mediaDir = LcmFileHelper.GetMediaDir(m_innerView.Cache.LangProject.LinkedFilesRootDir);
 					Directory.CreateDirectory(mediaDir); // Palaso media library does not cope if it does not exist.
 					path = Path.Combine(mediaDir, filename.Normalize(NormalizationForm.FormC));
 
@@ -342,11 +347,18 @@ namespace SIL.FieldWorks.Common.Widgets
 							path = tryPath;
 					}
 				}
-				soundFieldControl.Path = path;
-				soundFieldControl.BeforeStartingToRecord += soundFieldControl_BeforeStartingToRecord;
-				soundFieldControl.SoundRecorded += soundFieldControl_SoundRecorded;
-				soundFieldControl.SoundDeleted += soundFieldControl_SoundDeleted;
-				Controls.Add(soundFieldControl);
+				try
+				{
+					soundFieldControl.Path = path;
+					soundFieldControl.BeforeStartingToRecord += soundFieldControl_BeforeStartingToRecord;
+					soundFieldControl.SoundRecorded += soundFieldControl_SoundRecorded;
+					soundFieldControl.SoundDeleted += soundFieldControl_SoundDeleted;
+					Controls.Add(soundFieldControl);
+				}
+				catch (Exception e)
+				{
+					Debug.WriteLine(e.Message);
+				}
 			}
 		}
 
@@ -359,7 +371,7 @@ namespace SIL.FieldWorks.Common.Widgets
 			var handle = ws == null ? 0 : ws.Handle;
 			NonUndoableUnitOfWorkHelper.DoUsingNewOrCurrentUOW(m_innerView.Cache.ActionHandlerAccessor,
 				() => m_innerView.Cache.DomainDataByFlid.SetMultiStringAlt(m_innerView.HvoObj, m_innerView.Flid, handle,
-					m_innerView.Cache.TsStrFactory.MakeString("", handle)));
+					TsStringUtils.EmptyString(handle)));
 		}
 
 		void soundFieldControl_BeforeStartingToRecord(object sender, EventArgs e)
@@ -372,18 +384,18 @@ namespace SIL.FieldWorks.Common.Widgets
 			var ws = WsForSoundField(sc, out dummy);
 			NonUndoableUnitOfWorkHelper.DoUsingNewOrCurrentUOW(m_innerView.Cache.ActionHandlerAccessor,
 				() => m_innerView.Cache.DomainDataByFlid.SetMultiStringAlt(m_innerView.HvoObj, m_innerView.Flid,
-					ws.Handle, m_innerView.Cache.TsStrFactory.MakeString(filename, ws.Handle)));
+					ws.Handle, TsStringUtils.MakeString(filename, ws.Handle)));
 		}
 
 		private string CreateNewSoundFilename(out string path)
 		{
 			var obj = m_innerView.Cache.ServiceLocator.GetObject(m_innerView.HvoObj);
-			var mediaDir = FdoFileHelper.GetMediaDir(m_innerView.Cache.LangProject.LinkedFilesRootDir);
+			var mediaDir = LcmFileHelper.GetMediaDir(m_innerView.Cache.LangProject.LinkedFilesRootDir);
 			Directory.CreateDirectory(mediaDir); // Palaso media library does not cope if it does not exist.
 			// Make up a unique file name for the new recording. It starts with the shortname of the object
 			// so as to somewhat link them together, then adds a unique timestamp, then if by any chance
 			// that exists it keeps trying.
-			var baseNameForFile = obj.ShortName;
+			var baseNameForFile = obj.ShortName ?? string.Empty;
 			// LT-12926: Path.ChangeExtension checks for invalid filename chars,
 			// so we need to fix the filename before calling it.
 			foreach (var c in Path.GetInvalidFileNameChars())
@@ -412,7 +424,7 @@ namespace SIL.FieldWorks.Common.Widgets
 			{
 				NonUndoableUnitOfWorkHelper.DoUsingNewOrCurrentUOW(m_innerView.Cache.ActionHandlerAccessor,
 					() => m_innerView.Cache.DomainDataByFlid.SetMultiStringAlt(m_innerView.HvoObj, m_innerView.Flid,
-						ws.Handle, m_innerView.Cache.TsStrFactory.MakeString(filenameNew, ws.Handle)));
+						ws.Handle, TsStringUtils.MakeString(filenameNew, ws.Handle)));
 			}
 		}
 

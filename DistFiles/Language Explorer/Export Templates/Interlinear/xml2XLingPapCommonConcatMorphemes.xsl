@@ -21,7 +21,10 @@ Elements to ignore or are handled elsewhere
 			<xsl:variable name="sLang" select="@lang"/>
 			<xsl:if test="preceding-sibling::item[@type='note' and @lang=$sLang] or following-sibling::item[@type='note' and @lang=$sLang]">
 				<xsl:for-each select="preceding-sibling::item[@type='note' and @lang=$sLang] | following-sibling::item[@type='note' and @lang=$sLang]">
-					<endnote id="n{generate-id()}">
+					<xsl:variable name="sEndnoteNumber">
+						<xsl:number level="any" count="item[@type='note']" format="1"/>
+					</xsl:variable>
+					<endnote id="n{$sThisTextId}.{$sEndnoteNumber}">
 						<p>
 							<xsl:apply-templates/>
 						</p>
@@ -39,7 +42,7 @@ Elements to ignore or are handled elsewhere
    -->
 	<xsl:template name="OutputInterlinearContent">
 		<lineGroup>
-			<xsl:for-each select="words/word[item/@type='txt'][1]/descendant-or-self::item">
+			<xsl:for-each select="words/word[item/@type='txt' or morphemes][1]/descendant-or-self::item">
 				<xsl:variable name="sLang" select="@lang"/>
 				<xsl:choose>
 					<xsl:when test="parent::word ">
@@ -50,39 +53,70 @@ Elements to ignore or are handled elsewhere
 								<xsl:for-each select="ancestor::words/word/item[@type='txt' and @lang=$sLang]">
 									<wrd>
 										<langData>
+											<xsl:variable name="iBaselineSiblingsCount" select="count(preceding-sibling::item[@type='txt'])"/>
 											<xsl:call-template name="GetWordLangAttribute"/>
-											<!-- prepend any initial punctuation -->
-											<xsl:for-each select="../preceding-sibling::word[1]/item[@type='punct' and @lang=$sLang]">
-												<xsl:choose>
-													<xsl:when test="count(../preceding-sibling::word)=0">
-														<!-- it's the first word item -->
-														<xsl:value-of select="normalize-space(.)"/>
-													</xsl:when>
-													<xsl:when test="../preceding-sibling::word[1][item/@type='punct']">
-														<!-- there are other punct items before it; assume only the last one is preceding punct -->
-														<xsl:value-of select="normalize-space(.)"/>
-													</xsl:when>
-													<xsl:when test="contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘')">
-														<!-- there are other preceding word items; look for preceding punctuation N.B. may well need to look for characters, too -->
-														<xsl:value-of select="normalize-space(.)"/>
-													</xsl:when>
-												</xsl:choose>
-											</xsl:for-each>
+											<xsl:if test="$iBaselineSiblingsCount=0">
+												<!-- prepend any initial punctuation only to the first line -->
+												<xsl:for-each select="../preceding-sibling::word[1]/item[@type='punct']">
+													<xsl:choose>
+														<xsl:when test="count(../preceding-sibling::word)=0">
+															<!-- it's the first word item -->
+															<xsl:value-of select="normalize-space(.)"/>
+														</xsl:when>
+														<xsl:when test="../preceding-sibling::word[1][item/@type='punct']">
+															<!-- there are other punct items before it -->
+															<xsl:variable name="iPreviousTextItem" select="count(../preceding-sibling::word[item/@type='txt'])"/>
+															<xsl:choose>
+															<xsl:when test="$iPreviousTextItem=0">
+																<!-- everything before is punctuation; prepend them all -->
+																<xsl:for-each select="../preceding-sibling::word[item/@type='punct']">
+																	<xsl:value-of select="normalize-space(.)"/>
+																</xsl:for-each>
+															</xsl:when>
+																<xsl:otherwise>
+																	<!-- assume only the last one is preceding punct -->
+																	<xsl:value-of select="normalize-space(.)"/>
+																</xsl:otherwise>
+															</xsl:choose>
+														</xsl:when>
+														<xsl:when test="contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘')">
+															<!-- there are other preceding word items; look for preceding punctuation N.B. may well need to look for characters, too -->
+															<xsl:value-of select="normalize-space(.)"/>
+														</xsl:when>
+													</xsl:choose>
+												</xsl:for-each>
+											</xsl:if>
 											<!-- output the word -->
 											<xsl:value-of select="normalize-space(.)"/>
-											<!-- append any following punctuation -->
-											<xsl:for-each select="../following-sibling::word[1]/item[@type='punct' and @lang=$sLang]">
-												<xsl:if test="not(contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘'))">
-													<!-- skip any preceding punctuation N.B. may well need to look for characters, too -->
-													<xsl:value-of select="normalize-space(translate(.,'§',''))"/>
+											<xsl:if test="$iBaselineSiblingsCount=0">
+												<!-- append any following punctuation only to the first line -->
+												<xsl:if test="../following-sibling::word[1]/item[@type='punct']">
+													<xsl:variable name="iFollowingTextItem" select="count(../following-sibling::word[item/@type='txt'])"/>
+													<xsl:choose>
+														<xsl:when test="$iFollowingTextItem=0">
+															<!-- everything after is punctuation; append them all -->
+															<xsl:for-each select="../following-sibling::word[item/@type='punct']">
+																<xsl:value-of select="normalize-space(translate(.,'§',''))"/>
+															</xsl:for-each>
+														</xsl:when>
+														<xsl:otherwise>
+															<xsl:for-each select="../following-sibling::word[1]/item[@type='punct']">
+																<xsl:if test="not(contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘'))">
+																	<!-- skip any preceding punctuation N.B. may well need to look for characters, too -->
+																	<xsl:value-of select="normalize-space(translate(.,'§',''))"/>
+																</xsl:if>
+															</xsl:for-each>
+															<!-- check for a second consecutive punctuation item -->
+															<xsl:for-each select="../following-sibling::word[2]/item[@type='punct']">
+																<xsl:if test="not(contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘'))">
+																	<!-- skip any preceding punctuation N.B. may well need to look for characters, too -->
+																	<xsl:value-of select="normalize-space(translate(.,'§',''))"/>
+																</xsl:if>
+															</xsl:for-each>
+														</xsl:otherwise>
+													</xsl:choose>
 												</xsl:if>
-											</xsl:for-each>
-											<xsl:for-each select="../following-sibling::word[2]/item[@type='punct' and @lang!=$sLang]">
-												<xsl:if test="not(contains(.,'(') or contains(.,'[') or contains(.,'{') or contains(.,'“') or contains(.,'‘'))">
-													<!-- skip any preceding punctuation N.B. may well need to look for characters, too -->
-													<xsl:value-of select="normalize-space(translate(.,'§',''))"/>
-												</xsl:if>
-											</xsl:for-each>
+											</xsl:if>
 										</langData>
 									</wrd>
 								</xsl:for-each>

@@ -1,19 +1,14 @@
-// ---------------------------------------------------------------------------------------------
-// Copyright (c) 2011-2015 SIL International
+// Copyright (c) 2011-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: LexicalProviderManager.cs
-// Responsibility: FW Team
-// ---------------------------------------------------------------------------------------------
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.ServiceModel;
 using System.Threading;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.FieldWorks.Common.ScriptureUtils;
+using SIL.LCModel;
+using SIL.PlatformUtilities;
 using SIL.Reporting;
 using Timer = System.Threading.Timer;
 
@@ -39,24 +34,18 @@ namespace SIL.FieldWorks.LexicalProvider
 			" (so that it will start first), close both projects, then restart Flex.";
 
 		// The different URL prefixes that are required for Windows named pipes and Linux basic http binding.
-		#if __MonoCS__
-		// Just in case port 40001 is in use for something else on a particular system, we allow the user to configure both
-		// programs to use a different port.
-		internal static string UrlPrefix = "http://127.0.0.1:" + (Environment.GetEnvironmentVariable("LEXICAL_PROVIDER_PORT") ?? "40001") + "/";
-		#else
-		internal const string UrlPrefix = "net.pipe://localhost/";
-		#endif
+		// On Linux, just in case port 40001 is in use for something else on a particular system,
+		// we allow the user to configure both programs to use a different port.
+		internal static string UrlPrefix = Platform.IsWindows
+			? "net.pipe://localhost/"
+			: string.Format("http://127.0.0.1:{0}/", Environment.GetEnvironmentVariable("LEXICAL_PROVIDER_PORT") ?? "40001");
 
 		// Mono requires the pipe handle to use slashes instead of colons.
 		// We could put this conditional code somewhere in the routines that generate the pipe handles,
 		// but it seemed cleaner to keep all the conditional code for different kinds of pipe more-or-less in one place.
 		internal static string FixPipeHandle(string pipeHandle)
 		{
-			#if __MonoCS__
-			return pipeHandle.Replace (":", "/");
-			#else
-			return pipeHandle;
-			#endif
+			return Platform.IsWindows ? pipeHandle : pipeHandle.Replace (":", "/");
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -64,7 +53,7 @@ namespace SIL.FieldWorks.LexicalProvider
 		/// Creates a LexicalServiceProvider listener for the specified project.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		internal static void StartLexicalServiceProvider(ProjectId projectId, FdoCache cache)
+		internal static void StartLexicalServiceProvider(ProjectId projectId, LcmCache cache)
 		{
 			if (projectId == null)
 				throw new InvalidOperationException("Project identity must be known before creating the lexical provider listener");
@@ -85,10 +74,6 @@ namespace SIL.FieldWorks.LexicalProvider
 		/// <param name="provider">The provider.</param>
 		/// <param name="providerType">Type of the provider.</param>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="See review comment")]
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		internal static void StartProvider(Uri providerLocation, object provider, Type providerType)
 		{
 			if (s_runningProviders.ContainsKey(providerType))
@@ -105,20 +90,35 @@ namespace SIL.FieldWorks.LexicalProvider
 				// However, Mono does not yet support them, so on Mono we use a different binding.
 				// Note that any attempt to unify these will require parallel changes in Paratext
 				// and some sort of coordinated release of the new versions.
-#if __MonoCS__
-				BasicHttpBinding binding = new BasicHttpBinding();
-#else
-				NetNamedPipeBinding binding = new NetNamedPipeBinding();
-				binding.Security.Mode = NetNamedPipeSecurityMode.None;
-#endif
-				binding.MaxBufferSize *= 4;
-				binding.MaxReceivedMessageSize *= 4;
-				binding.MaxBufferPoolSize *= 2;
-				binding.ReaderQuotas.MaxBytesPerRead *= 4;
-				binding.ReaderQuotas.MaxArrayLength *= 4;
-				binding.ReaderQuotas.MaxDepth *= 4;
-				binding.ReaderQuotas.MaxNameTableCharCount *= 4;
-				binding.ReaderQuotas.MaxStringContentLength *= 4;
+
+				System.ServiceModel.Channels.Binding binding;
+				if (Platform.IsWindows)
+				{
+					var pipeBinding = new NetNamedPipeBinding();
+					pipeBinding.Security.Mode = NetNamedPipeSecurityMode.None;
+					pipeBinding.MaxBufferSize *= 4;
+					pipeBinding.MaxReceivedMessageSize *= 4;
+					pipeBinding.MaxBufferPoolSize *= 2;
+					pipeBinding.ReaderQuotas.MaxBytesPerRead *= 4;
+					pipeBinding.ReaderQuotas.MaxArrayLength *= 4;
+					pipeBinding.ReaderQuotas.MaxDepth *= 4;
+					pipeBinding.ReaderQuotas.MaxNameTableCharCount *= 4;
+					pipeBinding.ReaderQuotas.MaxStringContentLength *= 4;
+					binding = pipeBinding;
+				}
+				else
+				{
+					var httpBinding = new BasicHttpBinding();
+					httpBinding.MaxBufferSize *= 4;
+					httpBinding.MaxReceivedMessageSize *= 4;
+					httpBinding.MaxBufferPoolSize *= 2;
+					httpBinding.ReaderQuotas.MaxBytesPerRead *= 4;
+					httpBinding.ReaderQuotas.MaxArrayLength *= 4;
+					httpBinding.ReaderQuotas.MaxDepth *= 4;
+					httpBinding.ReaderQuotas.MaxNameTableCharCount *= 4;
+					httpBinding.ReaderQuotas.MaxStringContentLength *= 4;
+					binding = httpBinding;
+				}
 
 				providerHost.AddServiceEndpoint(providerType, binding, sNamedPipe);
 				providerHost.Open();
@@ -127,8 +127,7 @@ namespace SIL.FieldWorks.LexicalProvider
 			{
 				Logger.WriteError(e);
 				providerHost = null;
-				var paratextInstalled = FwRegistryHelper.Paratext7orLaterInstalled();
-				if (paratextInstalled)
+				if (ScriptureProvider.IsInstalled)
 				{
 					MessageBox.Show(PtCommunicationProb, PtCommunicationProbTitle,
 						MessageBoxButtons.OK, MessageBoxIcon.Information);

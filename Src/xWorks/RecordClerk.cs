@@ -1,10 +1,6 @@
-// Copyright (c) 2003-2015 SIL International
+// Copyright (c) 2003-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: RecordClerk.cs
-// Authorship History: John Hatton
-// Last reviewed:
 //
 // <remarks>
 //	This class, essentially, adapts a RecordList to the xCore/xWorks environment.
@@ -31,25 +27,28 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.Text;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FdoUi;
 using SIL.FieldWorks.FdoUi.Dialogs;
 using SIL.FieldWorks.Filters;
+using SIL.ObjectModel;
 using SIL.Reporting;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using XCore;
 using ConfigurationException = SIL.Utils.ConfigurationException;
@@ -59,7 +58,7 @@ namespace SIL.FieldWorks.XWorks
 	/// <summary>
 	/// Takes care of a list of records, standing between it and the UI.
 	/// </summary>
-	public class RecordClerk : IFWDisposable, IxCoreColleague, IRecordListUpdater, IAnalysisOccurrenceFromHvo, IVwNotifyChange, IBulkPropChanged
+	public class RecordClerk : IDisposable, IxCoreColleague, IRecordListUpdater, IAnalysisOccurrenceFromHvo, IVwNotifyChange, IBulkPropChanged
 	{
 		static protected RecordClerk s_lastClerkToLoadTreeBar;
 		internal static int DefaultPriority = (int)ColleaguePriority.Medium;
@@ -74,6 +73,8 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		protected RecordBarHandler m_recordBarHandler;
 		protected RecordList m_list;
+
+		private const string StatusBarRecordNumber = "StatusPanelRecordNumber";
 
 		/// <summary>
 		/// The record list might need access to this just to check membership of an object quickly.
@@ -253,8 +254,6 @@ namespace SIL.FieldWorks.XWorks
 			if (disposing)
 			{
 				// Dispose managed resources here.
-				//ResetStatusBarPanel("StatusPanelRecordNumber", "");
-				//ResetStatusBarPanel("StatusPanelMessage", "");
 				m_list.ListChanged -= OnListChanged;
 				m_list.AboutToReload -= m_list_AboutToReload;
 				m_list.DoneReload -= m_list_DoneReload;
@@ -343,7 +342,7 @@ namespace SIL.FieldWorks.XWorks
 			m_clerkProvidingRootObject = XmlUtils.GetOptionalAttributeValue(clerkConfiguration,"clerkProvidingOwner");
 			m_shouldHandleDeletion = XmlUtils.GetOptionalBooleanAttributeValue(clerkConfiguration, "shouldHandleDeletion", true);
 			m_fAllowDeletions = XmlUtils.GetOptionalBooleanAttributeValue(clerkConfiguration, "allowDeletions", true);
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_list = RecordList.Create(cache, mediator, propertyTable, clerkConfiguration.SelectSingleNode("recordList"));
 			m_list.Clerk = this;
 			m_relatedClerk = XmlUtils.GetOptionalAttributeValue(clerkConfiguration, "relatedClerk");
@@ -481,7 +480,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="cache"></param>
 		/// <returns><c>true</c> if we changed or initialized a new filter,
 		/// <c>false</c> if the one installed matches the one we had stored to persist.</returns>
-		protected virtual bool TryRestoreFilter(XmlNode clerkConfiguration, FdoCache cache)
+		protected virtual bool TryRestoreFilter(XmlNode clerkConfiguration, LcmCache cache)
 		{
 			RecordFilter filter = null;
 			string persistFilter = m_propertyTable.GetStringProperty(FilterPropertyTableId, null, PropertyTable.SettingsGroup.LocalSettings);
@@ -528,14 +527,11 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="cache"></param>
 		/// <returns><c>true</c> if we changed or initialized a new sorter,
 		/// <c>false</c>if the one installed matches the one we had stored to persist.</returns>
-		protected virtual bool TryRestoreSorter(XmlNode clerkConfiguration, FdoCache cache)
+		protected virtual bool TryRestoreSorter(XmlNode clerkConfiguration, LcmCache cache)
 		{
 			SortName = m_propertyTable.GetStringProperty(SortNamePropertyTableId, null, PropertyTable.SettingsGroup.LocalSettings);
 
 			string persistSorter = m_propertyTable.GetStringProperty(SorterPropertyTableId, null, PropertyTable.SettingsGroup.LocalSettings);
-			var fwdisposable = m_list.Sorter as IFWDisposable;
-			if (fwdisposable != null && fwdisposable.IsDisposed)
-				m_list.Sorter = null;
 			if (m_list.Sorter != null)
 			{
 				// if the persisted object string of the existing sorter matches the one in the property table
@@ -571,6 +567,20 @@ namespace SIL.FieldWorks.XWorks
 			{
 				// (LT-9515) restored sorters need to set some properties that could not be persisted.
 				sorter.Cache = cache;
+				if (sorter is GenRecordSorter)
+				{
+					var comparer = ((GenRecordSorter)sorter).Comparer;
+					WritingSystemComparer subComparer = null;
+					if(comparer != null)
+						subComparer = ((StringFinderCompare)comparer).SubComparer as WritingSystemComparer;
+					if (subComparer != null)
+					{
+						var subComparerWsId = subComparer.WsId;
+						var wsId = cache.WritingSystemFactory.GetWsFromStr(subComparerWsId);
+						if (wsId == 0)
+							return false;
+					}
+				}
 				if (m_list.Sorter == sorter)
 					return false;
 				m_list.Sorter = sorter;
@@ -705,9 +715,9 @@ namespace SIL.FieldWorks.XWorks
 		}
 
 		/// <summary>
-		/// our list's FdoCache
+		/// our list's LcmCache
 		/// </summary>
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get { return m_list.Cache; }
 		}
@@ -782,14 +792,14 @@ namespace SIL.FieldWorks.XWorks
 			{
 				CheckDisposed();
 
-				if (m_rch != null)
+				if (m_rch != null && !ReferenceEquals(m_rch, value))
 				{
 					// Store it, since we need to clear out the
 					// data member to avoid an infinite loop in calling its Dispose method,
 					// which then tries to call this setter with null.
-					var gonner = m_rch;
+					var goner = m_rch;
 					m_rch = null;
-					gonner.Dispose();
+					goner.Dispose();
 				}
 				m_rch = value;
 			}
@@ -1000,7 +1010,7 @@ namespace SIL.FieldWorks.XWorks
 		{
 			int index = m_list.IndexOf(hvoTarget);
 			// Why not just use the Clerk's Cache?
-			//var cache = (FdoCache)m_mediator.PropertyTable.GetValue("cache");
+			//var cache = (LcmCache)m_mediator.PropertyTable.GetValue("cache");
 			if (index == -1)
 			{
 				// In case we can't find the argument in the list, see if it is an owner of anything
@@ -1385,7 +1395,7 @@ namespace SIL.FieldWorks.XWorks
 			// Don't handle this message if you're not the primary clerk.  This allows, for
 			// example, XmlBrowseRDEView.cs to handle the message instead.
 
-			// Note from RandyR: One of these days we should probably subclass this obejct, and perhaps the record list more.
+			// Note from RandyR: One of these days we should probably subclass this object, and perhaps the record list more.
 			// The "reversalEntries" clerk wants to handle the message, even though it isn't the primary clerk.
 			// The m_shouldHandleDeletion member was also added, so the "reversalEntries" clerk's primary clerk
 			// would not handle the message, and delete an entire reversal index.
@@ -1425,25 +1435,15 @@ namespace SIL.FieldWorks.XWorks
 			var realHolder = (ToolTipHolder)holder;
 			if (m_list.IsCurrentObjectValid() && realHolder.ToolTip.Contains("{0}"))
 			{
-				realHolder.ToolTip = String.Format(realHolder.ToolTip, GetTypeNameForUi(m_list.CurrentObject));
+				realHolder.ToolTip = string.Format(realHolder.ToolTip, GetTypeNameForUi(m_list.CurrentObject));
 			}
 			return true;
 		}
 
 		private string GetTypeNameForUi(ICmObject obj)
 		{
-			if (obj is ICmPossibility)
-				return (obj as ICmPossibility).ItemTypeName();
-			IFsFeatureSystem featsys = obj.OwnerOfClass(FsFeatureSystemTags.kClassId) as IFsFeatureSystem;
-			if (featsys != null)
-			{
-				if (featsys.OwningFlid == LangProjectTags.kflidPhFeatureSystem)
-				{
-					string sClass = StringTable.Table.GetString(obj.ClassName, "ClassNames");
-					return StringTable.Table.GetString(sClass + "-Phonological", "AlternativeTypeNames");
-				}
-			}
-			return StringTable.Table.GetString(obj.ClassName, "ClassNames");
+			using (var uiObj = CmObjectUi.MakeUi(obj))
+				return uiObj.DisplayNameOfClass;
 		}
 
 		private bool ShouldNotHandleDeletionMessage
@@ -1490,7 +1490,7 @@ namespace SIL.FieldWorks.XWorks
 					if (uiObj.CanDelete(out cannotDeleteMsg))
 						dlg.SetDlgInfo(uiObj, Cache, m_mediator, m_propertyTable);
 					else
-						dlg.SetDlgInfo(uiObj, Cache, m_mediator, m_propertyTable, Cache.TsStrFactory.MakeString(cannotDeleteMsg, Cache.DefaultUserWs));
+						dlg.SetDlgInfo(uiObj, Cache, m_mediator, m_propertyTable, TsStringUtils.MakeString(cannotDeleteMsg, Cache.DefaultUserWs));
 				}
 				var window = m_propertyTable.GetValue<Form>("window");
 				if (DialogResult.Yes == dlg.ShowDialog(window))
@@ -1519,6 +1519,7 @@ namespace SIL.FieldWorks.XWorks
 							}
 						}
 					}
+					m_mediator.SendMessage("MasterRefresh", null);
 				}
 			}
 			return true; //we handled this, no need to ask anyone else.
@@ -1744,13 +1745,21 @@ namespace SIL.FieldWorks.XWorks
 			bool fIgnore = m_propertyTable.GetBoolProperty("IgnoreStatusPanel", false);
 			if (fIgnore)
 				return;
+			// JohnT: if we're not controlling the record list, we probably have no business trying to
+			// control the status bar. But we may need a separate control over this.
+			// Note that it can be definitely wrong to update it; this Clerk may not have anything
+			// to do with the current window contents.
 			if (IsControllingTheRecordTreeBar)
 			{
-				// JohnT: if we're not controlling the record list, we probably have no business trying to
-				// control the status bar. But we may need a separate control over this.
-				// Note that it can be definitely wrong to update it; this Clerk may not have anything
-				// to do with the current window contents.
-				UpdateStatusBarRecordNumber();
+				if (WantStatusBarRecordNumber)
+				{
+					UpdateStatusBarRecordNumber();
+				}
+				else
+				{
+					ResetStatusBarPanel(StatusBarRecordNumber, " ");
+					ResetStatusBarMessageForCurrentObject();
+				}
 			}
 
 			//this is used by DependantRecordLists
@@ -1784,6 +1793,15 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
+		private bool WantStatusBarRecordNumber
+		{
+			get
+			{
+				var currentControlObject = m_propertyTable.GetStringProperty("currentContentControl", null);
+				return !(currentControlObject == "lexiconDictionary" || currentControlObject == "reversalToolEditComplete");
+			}
+		}
+
 		private void UpdateStatusBarRecordNumber()
 		{
 			var noRecordsDefaultText = StringTable.Table.GetString("No Records", "Misc");// FwXApp.XWorksResources.GetString("stidNoRecords");
@@ -1805,7 +1823,7 @@ namespace SIL.FieldWorks.XWorks
 				s = noRecordsText;
 			}
 
-			ResetStatusBarPanel("StatusPanelRecordNumber", s);
+			ResetStatusBarPanel(StatusBarRecordNumber, s);
 			ResetStatusBarMessageForCurrentObject();
 		}
 
@@ -2393,7 +2411,7 @@ namespace SIL.FieldWorks.XWorks
 			CheckDisposed();
 
 			var command = (Command)commandObject;
-			string className = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "className");
+			string className = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "className");
 
 			string restrictToClerkID = XmlUtils.GetOptionalAttributeValue(command.Parameters[0], "restrictToClerkID");
 			if (restrictToClerkID != null && restrictToClerkID != Id)
@@ -2450,7 +2468,7 @@ namespace SIL.FieldWorks.XWorks
 		}
 
 		/// <summary>
-		/// this is triggered by any command whose message attribute is "InsertItemInVector"
+		/// This is triggered by any command whose message attribute is "InsertItemInVector"
 		/// </summary>
 		/// <param name="argument"></param>
 		/// <returns>true if successful (the class is known)</returns>
@@ -2485,7 +2503,7 @@ namespace SIL.FieldWorks.XWorks
 			string className;
 			try
 			{
-				className = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "className");
+				className = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "className");
 			}
 			catch (ApplicationException e)
 			{
@@ -2516,6 +2534,66 @@ namespace SIL.FieldWorks.XWorks
 			}
 
 			m_mediator.BroadcastMessage("FocusFirstPossibleSlice", null);
+			return result;
+		}
+
+		#endregion
+
+		#region Duplication
+
+		/// <summary>
+		/// Influence the display of a particular *command* (which we don't know the name of)
+		/// by giving an opinion on whether we are prepared to handle its corresponding "DuplicateItemInVector"
+		/// *message*.
+		/// </summary>
+		/// <param name="commandObject"></param>
+		/// <param name="display"></param>
+		/// <returns></returns>
+		public bool OnDisplayDuplicateItemInVector(object commandObject, ref UIItemDisplayProperties display)
+		{
+			var command = (Command)commandObject;
+
+			// Can't copy an item if items can't be inserted
+			bool canInsert = OnDisplayInsertItemInVector(commandObject, ref display);
+			if (!canInsert)
+				return display.Enabled = false;
+
+			// "noCopy" gets an xml value a group of list id's from lists that should not display the button
+			string noCopy = XmlUtils.GetOptionalAttributeValue(command.Parameters[0], "noCopy") ?? "";
+			return display.Enabled = !noCopy.Contains(Id);
+		}
+
+		/// <summary>
+		/// This is triggered by any command whose message attribute is "DuplicateItemInVector"
+		/// </summary>
+		/// <param name="argument"></param>
+		/// <returns></returns>
+		public bool OnDuplicateItemInVector(object argument)
+		{
+			CheckDisposed();
+
+			if (!Editable)
+				return false;
+
+			var command = (Command) argument;
+			bool result = false;
+			m_suppressSaveOnChangeRecord = true;
+			try
+			{
+				const int subitemFlid = 7004;
+				ICmPossibility original = (ICmPossibility) m_list.CurrentObject;
+				if(original.OwningFlid != subitemFlid && !original.ShortNameTSS.Text.Equals("???")) // Don't duplicate subitems or unnamed items
+					TreeBarHandlerUtils.Tree_Duplicate(original, 0, Cache);
+			}
+			catch (ApplicationException ae)
+			{
+				throw new ApplicationException("Could not duplicate the item requested by the command " + command.ConfigurationNode, ae);
+			}
+			finally
+			{
+				m_suppressSaveOnChangeRecord = false;
+			}
+
 			return result;
 		}
 
@@ -2955,7 +3033,7 @@ namespace SIL.FieldWorks.XWorks
 		/// By default, it will suspend full Reloads initiated by PropChanged until we finish.
 		/// During dispose, we'll ReloadList if we tried to reload the list via PropChanged.
 		/// </summary>
-		public class ListUpdateHelper : FwDisposableBase
+		public class ListUpdateHelper : DisposableBase
 		{
 			public class ListUpdateHelperOptions
 			{
@@ -3047,8 +3125,6 @@ namespace SIL.FieldWorks.XWorks
 			/// <param name="fWasAlreadySuppressed">Usually, clerk.ListLoadingSuppressed. When we know we just
 			/// created the clerk, already in a suppressed state, and want to treat it as if this
 			/// list update helper did the suppressing, pass false, even though the list may in fact be already suppressed.</param>
-			[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-				Justification = "parentClerk is a reference")]
 			public ListUpdateHelper(RecordClerk clerk, bool fWasAlreadySuppressed)
 			{
 				m_clerk = clerk;
@@ -3131,7 +3207,7 @@ namespace SIL.FieldWorks.XWorks
 				m_fTriggerPendingReloadOnDispose = false;
 				m_fOriginalLoadRequestedWhileSuppressed = false;
 			}
-			#region FwDisposableBase Members
+			#region DisposableBase Members
 
 			protected override void DisposeManagedResources()
 			{
@@ -3169,7 +3245,13 @@ namespace SIL.FieldWorks.XWorks
 				m_waitCursor = null;
 			}
 
-			#endregion FwDisposableBase
+			protected override void Dispose(bool disposing)
+			{
+				Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + " ******");
+				base.Dispose(disposing);
+			}
+
+			#endregion DisposableBase
 		}
 
 		private ListUpdateHelper m_bulkEditUpdateHelper;
@@ -3284,12 +3366,12 @@ namespace SIL.FieldWorks.XWorks
 			m_list.Sorter = sorter;
 		}
 
-		protected override bool TryRestoreFilter(XmlNode clerkConfiguration, FdoCache cache)
+		protected override bool TryRestoreFilter(XmlNode clerkConfiguration, LcmCache cache)
 		{
 			return false;
 		}
 
-		protected override bool TryRestoreSorter(XmlNode clerkConfiguration, FdoCache cache)
+		protected override bool TryRestoreSorter(XmlNode clerkConfiguration, LcmCache cache)
 		{
 			return false;
 		}
@@ -3360,7 +3442,7 @@ namespace SIL.FieldWorks.XWorks
 	{
 		static public string GetIdOfTool(XmlNode node)
 		{
-			return XmlUtils.GetManditoryAttributeValue(node,"id");
+			return XmlUtils.GetMandatoryAttributeValue(node,"id");
 		}
 
 		/// <summary>
@@ -3370,7 +3452,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <returns></returns>
 		static public XmlNode GetClerkNodeFromToolParamsNode(XmlNode parameterNode)
 		{
-			string clerk = XmlUtils.GetManditoryAttributeValue(parameterNode, "clerk");
+			string clerk = XmlUtils.GetMandatoryAttributeValue(parameterNode, "clerk");
 			// REVIEW (Hasso) 2014.02: while //clerks is probably an improvement over ancestors::parameters/clerks, this XPath should be
 			// either thorouhly reviewed or reverted before merging with our main codebase.
 			string xpath = String.Format("//clerks/clerk[@id='{0}']",
@@ -3386,8 +3468,6 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// Make up for weakness of XmlNode.SelectSingleNode.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private static XmlNode FindClerkNode(XmlNode parameterNode, string clerk)
 		{
 			foreach (XmlNode node in parameterNode.SelectNodes("ancestor::parameters/clerks/clerk"))

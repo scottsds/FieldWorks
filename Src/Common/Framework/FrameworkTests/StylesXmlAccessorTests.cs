@@ -1,15 +1,16 @@
-﻿// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using NUnit.Framework;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.FDOTests;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel;
+
+// ReSharper disable InconsistentNaming
 
 namespace SIL.FieldWorks.Common.Framework
 {
@@ -19,7 +20,6 @@ namespace SIL.FieldWorks.Common.Framework
 	[TestFixture]
 	public class StylesXmlAccessorTests : MemoryOnlyBackendProviderRestoredForEachTestTestBase
 	{
-
 		/// <summary>
 		/// This is not a very comprehensive test. There are important behaviors it does not test, such as the renaming
 		/// when the imported style has different values for the context-releated properties. This test just covers
@@ -44,8 +44,7 @@ namespace SIL.FieldWorks.Common.Framework
 			style1.IsBuiltIn = true;
 			style1.IsModified = true;
 			style1.NextRA = style1;
-			var propsFactory = TsPropsFactoryClass.Create();
-			var props1 = propsFactory.MakeProps("mystyle", Cache.DefaultAnalWs, 0);
+			var props1 = TsStringUtils.MakeProps("mystyle", Cache.DefaultAnalWs);
 			style1.Rules = props1;
 			style1.UserLevel = 5;
 
@@ -113,8 +112,7 @@ namespace SIL.FieldWorks.Common.Framework
 			style1.IsBuiltIn = true;
 			style1.IsModified = true;
 			style1.NextRA = style1;
-			var propsFactory = TsPropsFactoryClass.Create();
-			var props1 = propsFactory.MakeProps("mystyle", Cache.DefaultAnalWs, 0);
+			var props1 = TsStringUtils.MakeProps("mystyle", Cache.DefaultAnalWs);
 			style1.Rules = props1;
 			style1.UserLevel = 5;
 
@@ -164,6 +162,90 @@ namespace SIL.FieldWorks.Common.Framework
 			Assert.That(newStyle2.NextRA, Is.Null, "should have cleared the invalid next style");
 			Assert.That(newStyle2.BasedOnRA, Is.EqualTo(newStyle1), "should have transferred the base style ref to the replacement");
 		}
+
+		/// <summary>
+		/// When an
+		/// </summary>
+		[Test]
+		public void FindOrCreateStyle_HandlesConflictingUserStyles()
+		{
+			var userStyle = Cache.ServiceLocator.GetInstance<IStStyleFactory>().Create();
+			Cache.LangProject.StylesOC.Add(userStyle);
+			const string styleName = "StyleName";
+
+			userStyle.Name = styleName;
+			userStyle.Type = StyleType.kstParagraph;
+			userStyle.Context = ContextValues.General;
+			userStyle.Structure = StructureValues.Undefined;
+			userStyle.Function = FunctionValues.Prose;
+			userStyle.IsBuiltIn = false;
+			userStyle.IsModified = true;
+			userStyle.NextRA = userStyle;
+			var propsFactory = TsPropsFactoryClass.Create();
+			var props1 = propsFactory.MakeProps("mystyle", Cache.DefaultAnalWs, 0);
+			userStyle.Rules = props1;
+
+			var userGuid = userStyle.Guid;
+			var factoryGuid = Guid.NewGuid();
+
+			var sut = new TestAccessorForFindOrCreateStyle(Cache);
+
+			sut.FindOrCreateStyle(styleName, StyleType.kstCharacter, ContextValues.General, StructureValues.Undefined,
+				FunctionValues.Prose, factoryGuid);
+
+			var userStyle1 = Cache.ServiceLocator.GetInstance<IStStyleRepository>().GetObject(userGuid); // will throw if not found
+			Assert.That(userStyle1, Is.SameAs(userStyle));
+			Assert.That(userStyle1.IsValidObject, "should still be valid");
+			Assert.That(userStyle1.Name, Is.Not.EqualTo(styleName));
+			Assert.That(userStyle1.IsBuiltIn, Is.False, "User style built in");
+			Assert.That(userStyle1.IsModified, Is.True, "user style modified");
+			Assert.That(userStyle1.NextRA, Is.EqualTo(userStyle1), "should have kept the self-referential next style");
+			Assert.That(userStyle1.Rules, Is.EqualTo(props1));
+			Assert.That(userStyle1.Guid, Is.EqualTo(userGuid), "Should have maintained its GUID");
+
+			var factoryStyle = Cache.ServiceLocator.GetInstance<IStStyleRepository>().GetObject(factoryGuid); // will throw if not found
+			Assert.That(factoryStyle.Name, Is.EqualTo(styleName));
+			Assert.That(factoryStyle.IsBuiltIn, Is.True, "factory style built in");
+			Assert.That(factoryStyle.IsModified, Is.False, "factory style modified");
+			Assert.That(factoryStyle.Owner, Is.Not.Null, "factory style owner");
+			Assert.That(factoryStyle.Guid, Is.EqualTo(factoryGuid), "Should have the factory-specifiied GUID");
+		}
+
+		/// <summary>
+		/// Test that scripture styles get moved to the language project now that TE has been removed.
+		/// </summary>
+		[Test]
+		public void FindOrCreateStyles_SucceedsAfterStylesMovedFromScripture()
+		{
+			IScripture scr = Cache.ServiceLocator.GetInstance<IScriptureFactory>().Create();
+			var scriptureStyle = Cache.ServiceLocator.GetInstance<IStStyleFactory>().Create();
+			scr.StylesOC.Add(scriptureStyle);
+			string styleName = "Scripture Style";
+			scriptureStyle.Name = styleName;
+
+			scriptureStyle.Type = StyleType.kstParagraph;
+			scriptureStyle.Context = ContextValues.Text;
+			scriptureStyle.Structure = StructureValues.Body;
+			scriptureStyle.Function = FunctionValues.Prose;
+			scriptureStyle.IsBuiltIn = true;
+			scriptureStyle.IsModified = true;
+			scriptureStyle.NextRA = scriptureStyle;
+			var props1 = TsStringUtils.MakeProps("mystyle", Cache.DefaultAnalWs);
+			scriptureStyle.Rules = props1;
+			scriptureStyle.UserLevel = 5;
+
+			Guid scrStyleGuid = scriptureStyle.Guid;
+			var sut = new TestAccessorForFindOrCreateStyle(Cache);
+			Assert.That(scr.StylesOC.Count, Is.EqualTo(0), "Style should have been removed from Scripture.");
+			Assert.That(Cache.LangProject.StylesOC.Count, Is.EqualTo(1), "Style should have been added to language project.");
+			Assert.That(Cache.LangProject.StylesOC.First().Name, Is.EqualTo(styleName), "Style name should not have changed.");
+			var movedStyle = sut.FindOrCreateStyle(styleName, StyleType.kstParagraph, ContextValues.Text,
+				StructureValues.Body, FunctionValues.Prose, scrStyleGuid);
+
+			Assert.That(movedStyle, Is.EqualTo(scriptureStyle));
+			Assert.That(movedStyle.Name, Is.EqualTo(styleName), "Style name should not have changed.");
+			Assert.That(movedStyle.Owner, Is.EqualTo(Cache.LangProject), "The style owner should be the language project.");
+		}
 	}
 
 	/// <summary>
@@ -175,9 +257,13 @@ namespace SIL.FieldWorks.Common.Framework
 	/// </summary>
 	class TestAccessorForFindOrCreateStyle : StylesXmlAccessor
 	{
-		public TestAccessorForFindOrCreateStyle(FdoCache cache) : base(cache)
+		public TestAccessorForFindOrCreateStyle(LcmCache cache) : base(cache)
 		{
 			m_databaseStyles = cache.LangProject.StylesOC;
+			if (cache.LangProject.TranslatedScriptureOA != null)
+			{
+				MoveStylesFromScriptureToLangProject();
+			}
 			// see class comment. This would not be normal behavior for a StylesXmlAccessor subclass constructor.
 			foreach (var sty in m_databaseStyles)
 				m_htOrigStyles[sty.Name] = sty;
@@ -192,17 +278,17 @@ namespace SIL.FieldWorks.Common.Framework
 			get { throw new NotImplementedException(); }
 		}
 
-		protected override FdoCache Cache
+		protected override LcmCache Cache
 		{
 			get { return m_cache; }
 		}
 
-		protected override IFdoOwningCollection<ICmResource> ResourceList
+		protected override ILcmOwningCollection<ICmResource> ResourceList
 		{
 			get { throw new NotImplementedException(); }
 		}
 
-		protected override IFdoOwningCollection<IStStyle> StyleCollection
+		protected override ILcmOwningCollection<IStStyle> StyleCollection
 		{
 			get { throw new NotImplementedException(); }
 		}

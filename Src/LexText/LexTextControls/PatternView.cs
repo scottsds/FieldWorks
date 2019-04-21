@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
@@ -33,7 +33,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// </summary>
 		private class PatternEditingHelper : RootSiteEditingHelper
 		{
-			public PatternEditingHelper(FdoCache cache, IEditingCallbacks callbacks)
+			public PatternEditingHelper(LcmCache cache, IEditingCallbacks callbacks)
 				: base(cache, callbacks)
 			{
 			}
@@ -75,7 +75,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			m_patternControl = patternControl;
 			Mediator = mediator;
 			m_propertyTable = propertyTable;
-			Cache = m_propertyTable.GetValue<FdoCache>("cache");
+			Cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_hvo = hvo;
 			m_vc = vc;
 			m_sda = sda;
@@ -94,23 +94,21 @@ namespace SIL.FieldWorks.LexText.Controls
 		public override void MakeRoot()
 		{
 			CheckDisposed();
-			base.MakeRoot();
 
-			if (m_fdoCache == null || DesignMode)
+			if (m_cache == null || DesignMode)
 				return;
 
-			m_rootb = VwRootBoxClass.Create();
+			base.MakeRoot();
 			// the default value of 4 for MaxParasToScan isn't high enough when using the arrow keys to move
 			// the cursor between items in a rule when the number of lines in the rule is high, since there might
 			// be a large number of non-editable empty lines in a pile
 			m_rootb.MaxParasToScan = 10;
-			m_rootb.SetSite(this);
 			m_rootb.DataAccess = m_sda;
 			// JohnT: this notification removal was introduced by Damien in change list 25875, along with removing
 			// several IgnorePropChanged wrappers in RuleFormulaControl. I don't know why we ever wanted to not see
 			// (some) PropChanged messages, but ignoring them all prevents us from removing inserted items from the
 			// view in Undo. (see FWR-3501)
-			//m_fdoCache.MainCacheAccessor.RemoveNotification(m_rootb);
+			//m_cache.MainCacheAccessor.RemoveNotification(m_rootb);
 			if (m_hvo != 0)
 				m_rootb.SetRootObject(m_hvo, m_vc, m_rootFrag, FontHeightAdjuster.StyleSheetFromPropertyTable(m_propertyTable));
 		}

@@ -14,10 +14,13 @@ using System;
 using System.Windows.Forms;
 using System.Diagnostics;
 using System.IO;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.RootSites;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using XCore;
 
@@ -130,7 +133,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 			AudioVisualLauncher ctrl = Control as AudioVisualLauncher;
 			ctrl.Initialize(
-				m_propertyTable.GetValue<FdoCache>("cache"),
+				m_propertyTable.GetValue<LcmCache>("cache"),
 				Media.MediaFileRA,
 				CmFileTags.kflidInternalPath,
 				"InternalPath",
@@ -308,7 +311,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <param name="propertyTable"></param>
 		/// <param name="displayNameProperty"></param>
 		///  <param name="displayWs"></param>
-		public override void Initialize(FdoCache cache, ICmObject obj, int flid,
+		public override void Initialize(LcmCache cache, ICmObject obj, int flid,
 			string fieldName, IPersistenceProvider persistProvider, Mediator mediator, PropertyTable propertyTable,
 			string displayNameProperty, string displayWs)
 		{
@@ -316,7 +319,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 			base.Initialize(cache, obj, flid, fieldName, persistProvider, mediator, propertyTable,
 				displayNameProperty, displayWs);
-			m_view.Init(obj as ICmFile, flid);
+			m_view.Init(obj as ICmFile, flid, propertyTable);
 		}
 		/// <summary>
 		/// Handle launching of the media player.
@@ -434,10 +437,11 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			m_vc = null;
 		}
 
-		public void Init(ICmFile obj, int flid)
+		public void Init(ICmFile obj, int flid, PropertyTable propertyTable)
 		{
 			CheckDisposed();
-			m_fdoCache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_propertyTable = propertyTable;
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_file = obj;
 			m_flid = flid;
 			if (m_rootb == null)
@@ -457,18 +461,17 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		public override void MakeRoot()
 		{
 			CheckDisposed();
-			base.MakeRoot();
 
-			if (m_fdoCache == null || DesignMode)
+			if (m_cache == null || DesignMode)
 				return;
 
-			m_rootb = VwRootBoxClass.Create();
-			m_rootb.SetSite(this);
-			m_rootb.DataAccess = m_fdoCache.DomainDataByFlid;
-			m_vc = new AudioVisualVc(m_fdoCache, m_flid, "InternalPath");
+			base.MakeRoot();
+
+			m_rootb.DataAccess = m_cache.DomainDataByFlid;
+			m_vc = new AudioVisualVc(m_cache, m_flid, "InternalPath");
 			if (m_file != null)
 			{
-				m_rootb.SetRootObject(m_file.Hvo, m_vc, AudioVisualView.kfragPathname,
+				m_rootb.SetRootObject(m_file.Hvo, m_vc, kfragPathname,
 					m_rootb.Stylesheet);
 			}
 
@@ -487,7 +490,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		protected int m_flid;
 		protected string m_displayNameProperty;
 
-		public AudioVisualVc(FdoCache cache, int flid, string displayNameProperty)
+		public AudioVisualVc(LcmCache cache, int flid, string displayNameProperty)
 		{
 			Debug.Assert(cache != null);
 			Cache = cache;
@@ -506,14 +509,12 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 					vwenv.set_IntProperty((int)FwTextPropType.ktptEditable,
 						(int)FwTextPropVar.ktpvDefault,
 						(int)TptEditable.ktptNotEditable);
-					ITsString tss;
-					ITsStrFactory tsf = m_cache.TsStrFactory;
 					Debug.Assert(hvo != 0);
 					Debug.Assert(m_cache != null);
 					var file = m_cache.ServiceLocator.GetInstance<ICmFileRepository>().GetObject(hvo);
 					Debug.Assert(file != null);
 					string path = file.AbsoluteInternalPath;
-					tss = tsf.MakeString(path, m_cache.WritingSystemFactory.UserWs);
+					ITsString tss = TsStringUtils.MakeString(path, m_cache.WritingSystemFactory.UserWs);
 					vwenv.OpenParagraph();
 					vwenv.NoteDependency( new [] { m_cache.LangProject.Hvo, file.Hvo},
 						new [] {LangProjectTags.kflidLinkedFilesRootDir, CmFileTags.kflidInternalPath}, 2);

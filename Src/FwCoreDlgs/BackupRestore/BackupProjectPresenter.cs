@@ -6,11 +6,13 @@
 // Responsibility: FW Team
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Windows.Forms;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices.BackupRestore;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices.BackupRestore;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 {
@@ -20,7 +22,7 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 	internal class BackupProjectPresenter
 	{
 		private readonly IBackupProjectView m_backupProjectView;
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -29,13 +31,13 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		/// <param name="backupProjectView">The backup project dialog box.</param>
 		/// <param name="cache">The cache.</param>
 		/// ------------------------------------------------------------------------------------
-		internal BackupProjectPresenter(IBackupProjectView backupProjectView, FdoCache cache)
+		internal BackupProjectPresenter(IBackupProjectView backupProjectView, LcmCache cache)
 		{
 			m_cache = cache;
 			m_backupProjectView = backupProjectView;
 
 			//Older projects might not have this folder so when launching the backup dialog we want to create it.
-			Directory.CreateDirectory(FdoFileHelper.GetSupportingFilesDir(m_cache.ProjectId.ProjectFolder));
+			Directory.CreateDirectory(LcmFileHelper.GetSupportingFilesDir(m_cache.ProjectId.ProjectFolder));
 		}
 
 		///<summary>
@@ -45,8 +47,8 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		{
 			get
 			{
-				return Path.Combine(FdoFileHelper.GetBackupSettingsDir(m_cache.ProjectId.ProjectFolder),
-					FdoFileHelper.ksBackupSettingsFilename);
+				return Path.Combine(LcmFileHelper.GetBackupSettingsDir(m_cache.ProjectId.ProjectFolder),
+					LcmFileHelper.ksBackupSettingsFilename);
 			}
 		}
 
@@ -57,7 +59,7 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		{
 			get
 			{
-				var supportingFilesFolder = FdoFileHelper.GetSupportingFilesDir(m_cache.ProjectId.ProjectFolder);
+				var supportingFilesFolder = LcmFileHelper.GetSupportingFilesDir(m_cache.ProjectId.ProjectFolder);
 				var files = ProjectBackupService.GenerateFileListFolderAndSubfolders(supportingFilesFolder);
 				if (files.Count > 0)
 					return true;
@@ -76,7 +78,9 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		/// ------------------------------------------------------------------------------------
 		internal bool FileNameProblems(Form messageBoxOwner)
 		{
-			BackupProjectSettings settings = new BackupProjectSettings(m_cache, m_backupProjectView, FwDirectoryFinder.DefaultBackupDirectory);
+			var versionInfoProvider = new VersionInfoProvider(Assembly.GetExecutingAssembly(), false);
+			var settings = new BackupProjectSettings(m_cache, m_backupProjectView, FwDirectoryFinder.DefaultBackupDirectory,
+				versionInfoProvider.MajorVersion);
 			settings.DestinationFolder = m_backupProjectView.DestinationFolder;
 			if (settings.AdjustedComment.Trim() != settings.Comment.TrimEnd())
 			{
@@ -111,14 +115,17 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		/// ------------------------------------------------------------------------------------
 		internal string BackupProject(IThreadedProgress progressDlg)
 		{
-			BackupProjectSettings settings = new BackupProjectSettings(m_cache, m_backupProjectView, FwDirectoryFinder.DefaultBackupDirectory);
+			var versionInfoProvider = new VersionInfoProvider(Assembly.GetExecutingAssembly(), false);
+			var settings = new BackupProjectSettings(m_cache, m_backupProjectView, FwDirectoryFinder.DefaultBackupDirectory,
+				versionInfoProvider.MajorVersion);
 			settings.DestinationFolder = m_backupProjectView.DestinationFolder;
 
 			ProjectBackupService backupService = new ProjectBackupService(m_cache, settings);
 			string backupFile;
 			if (!backupService.BackupProject(progressDlg, out backupFile))
 			{
-				string msg = string.Format(FwCoreDlgs.ksCouldNotBackupSomeFiles, backupService.FailedFiles.ToString(", ", Path.GetFileName));
+				var msg = string.Format(FwCoreDlgs.ksCouldNotBackupSomeFiles,
+					string.Join(", ", backupService.FailedFiles.Select(Path.GetFileName)));
 				if (MessageBox.Show(msg, FwCoreDlgs.ksWarning, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
 					File.Delete(backupFile);
 				backupFile = null;

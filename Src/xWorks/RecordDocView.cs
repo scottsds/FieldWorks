@@ -14,14 +14,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.Utils;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks
@@ -261,8 +261,6 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="rcDstRoot"></param>
 		/// <returns></returns>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ToolStripMenuItem gets added to m_contextMenu.Items and disposed there")]
 		protected override bool DoContextMenu(IVwSelection sel, Point pt, Rectangle rcSrcRoot, Rectangle rcDstRoot)
 		{
 			int hvo, tag, ihvo, cpropPrevious;
@@ -445,7 +443,7 @@ namespace SIL.FieldWorks.XWorks
 			if (!String.IsNullOrEmpty(sProp))
 				sLayout = propertyTable.GetStringProperty(sProp, null);
 			if (String.IsNullOrEmpty(sLayout))
-				sLayout = XmlUtils.GetManditoryAttributeValue(xnSpec, "layout");
+				sLayout = XmlUtils.GetMandatoryAttributeValue(xnSpec, "layout");
 			var parts = sLayout.Split('#');
 			parts[0] += XmlUtils.GetOptionalAttributeValue(xnSpec, "layoutSuffix", "");
 			return string.Join("#", parts);

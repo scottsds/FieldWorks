@@ -1,25 +1,21 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ImportWordSetDlg.cs
-// Responsibility: Andy Black
-// Last reviewed:
 //
 // <remarks>
 // Implementation of:
 //		ImportWordSetDlg - Dialog for editing XML representation of parser parameters
 //                            (MoMorphData : ParserParameters)
 // </remarks>
+
 using System;
 using System.Text;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Resources;
-using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
@@ -27,7 +23,7 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// <summary>
 	/// Summary description for ImportWordSetDlg.
 	/// </summary>
-	public class ImportWordSetDlg : Form, IFWDisposable
+	public class ImportWordSetDlg : Form
 	{
 		#region Data members
 
@@ -39,7 +35,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		///
 		/// </summary>
 		protected IHelpTopicProvider m_helpTopicProvider;
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		protected string[] m_paths;
 
 		private System.Windows.Forms.Label label1;
@@ -75,7 +71,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		{
 			//InitializeComponent();
 			m_mediator = mediator;
-			m_cache = propertyTable.GetValue<FdoCache>("cache");
+			m_cache = propertyTable.GetValue<LcmCache>("cache");
 
 			m_helpTopicProvider = propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider");
 			helpProvider = new HelpProvider();

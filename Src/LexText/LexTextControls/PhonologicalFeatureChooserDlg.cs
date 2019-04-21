@@ -1,21 +1,24 @@
-﻿// This really needs to be refactored with MasterCategoryListDlg.cs
+﻿// Copyright (c) 2017 SIL International
+// This software is licensed under the LGPL, version 2.1 or later
+// (http://www.gnu.org/licenses/lgpl-2.1.html)
+
+// This really needs to be refactored with MasterCategoryListDlg.cs
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.Text;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.Infrastructure;
 using SIL.Windows.Forms;
 using XCore;
 
@@ -28,11 +31,11 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// A user may choose the "<n/a>" option to remove a feature/value pair from an existing feature structure.
 	/// If returns a feature structure with the selected feature/value pairs.
 	/// </summary>
-	public class PhonologicalFeatureChooserDlg : Form, IFWDisposable
+	public class PhonologicalFeatureChooserDlg : Form
 	{
 		private Mediator m_mediator;
 		private XCore.PropertyTable m_propertyTable;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private IPhRegularRule m_rule;
 		private IPhSimpleContextNC m_ctxt;
 		private PhonologicalFeaturePublisher m_sda;
@@ -153,7 +156,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			}
 		}
 
-		private IPhFeatureConstraint RemoveFeatureConstraint(IFdoReferenceSequence<IPhFeatureConstraint> featConstrs, IFsFeatDefn feat)
+		private IPhFeatureConstraint RemoveFeatureConstraint(ILcmReferenceSequence<IPhFeatureConstraint> featConstrs, IFsFeatDefn feat)
 		{
 			var constrToRemove = GetFeatureConstraint(featConstrs, feat);
 			if (constrToRemove != null)
@@ -216,7 +219,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="propertyTable"></param>
 		/// <param name="rule"></param>
 		/// <param name="ctxt"></param>
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPhRegularRule rule, IPhSimpleContextNC ctxt)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPhRegularRule rule, IPhSimpleContextNC ctxt)
 		{
 			CheckDisposed();
 
@@ -224,7 +227,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			SetDlgInfo(cache, mediator, propertyTable, ctxt.FeatureStructureRA.Hvo, PhNCFeaturesTags.kflidFeatures, fs, rule, ctxt);
 		}
 
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPhRegularRule rule)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPhRegularRule rule)
 		{
 			CheckDisposed();
 
@@ -237,7 +240,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="cache"></param>
 		/// <param name="mediator"></param>
 		/// <param name="fs"></param>
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IFsFeatStruc fs)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IFsFeatStruc fs)
 		{
 			SetDlgInfo(cache, mediator, propertyTable, fs.Owner.Hvo, fs.OwningFlid, fs, null, null);
 		}
@@ -250,21 +253,21 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="propertyTable"></param>
 		/// <param name="cobj"></param>
 		/// <param name="owningFlid"></param>
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject cobj, int owningFlid)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject cobj, int owningFlid)
 		{
 			CheckDisposed();
 
 			SetDlgInfo(cache, mediator, propertyTable, cobj.Hvo, owningFlid, null, null, null);
 		}
 
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable)
 		{
 			CheckDisposed();
 
 			SetDlgInfo(cache, mediator, propertyTable, 0, 0, null, null, null);
 		}
 
-		private void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, int hvoOwner, int owningFlid, IFsFeatStruc fs, IPhRegularRule rule, IPhSimpleContextNC ctxt)
+		private void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, int hvoOwner, int owningFlid, IFsFeatStruc fs, IPhRegularRule rule, IPhSimpleContextNC ctxt)
 		{
 			m_fs = fs;
 			m_owningFlid = owningFlid;
@@ -531,7 +534,7 @@ namespace SIL.FieldWorks.LexText.Controls
 						m_sda.SetObjProp(feat.Hvo, PhonologicalFeaturePublisher.ValueFlid, closedValue.ValueRA.Hvo);
 					}
 					else
-					{  
+					{
 						if (m_ctxt != null && ShowFeatureConstraintValues)
 						{
 							string str;
@@ -673,8 +676,6 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// Required method for Designer support - do not modify
 		/// the contents of this method with the code editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "TODO-Linux: LinkLabel.TabStop is missing from Mono")]
 		private void InitializeComponent()
 		{
 			System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(PhonologicalFeatureChooserDlg));
@@ -853,8 +854,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			ShowHelp.ShowHelpTopic(m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), m_helpTopic);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-			Justification="m_cache is a reference and will be disposed in parent class")]
 		class PhonologicalFeaturePublisher : ObjectListPublisher
 		{
 			public const int ListFlid = 89999988;
@@ -864,9 +863,9 @@ namespace SIL.FieldWorks.LexText.Controls
 			Dictionary<int, string> m_unicodeProps;
 			Dictionary<int, int> m_objProps;
 
-			private FdoCache m_cache;
+			private LcmCache m_cache;
 
-			public PhonologicalFeaturePublisher(ISilDataAccessManaged domainDataByFlid, FdoCache cache)
+			public PhonologicalFeaturePublisher(ISilDataAccessManaged domainDataByFlid, LcmCache cache)
 				: base(domainDataByFlid, ListFlid)
 			{
 				m_cache = cache;
@@ -924,7 +923,7 @@ namespace SIL.FieldWorks.LexText.Controls
 					string str;
 					if (!m_unicodeProps.TryGetValue(hvo, out str))
 						str = "";
-					var tssString = m_cache.TsStrFactory.MakeString(str, m_cache.DefaultUserWs);
+					var tssString = TsStringUtils.MakeString(str, m_cache.DefaultUserWs);
 
 					return tssString;
 				}
@@ -942,7 +941,7 @@ namespace SIL.FieldWorks.LexText.Controls
 					base.SetUnicode(hvo, tag, _rgch, cch);
 			}
 
-			class PhonologicalFeatureMdc : FdoMetaDataCacheDecoratorBase
+			class PhonologicalFeatureMdc : LcmMetaDataCacheDecoratorBase
 			{
 				public PhonologicalFeatureMdc(IFwMetaDataCacheManaged mdc)
 					: base(mdc)
@@ -957,7 +956,7 @@ namespace SIL.FieldWorks.LexText.Controls
 				public override int GetFieldId(string bstrClassName, string bstrFieldName, bool fIncludeBaseClasses)
 				{
 					if (bstrClassName == "FsClosedFeature" && bstrFieldName == "DummyPolarity")
-						return PolarityFlid; 
+						return PolarityFlid;
 					if (bstrClassName == "FsClosedFeature" && bstrFieldName == "DummyValue")
 						return ValueFlid;
 					return base.GetFieldId(bstrClassName, bstrFieldName, fIncludeBaseClasses);

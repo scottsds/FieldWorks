@@ -8,13 +8,13 @@ using System.IO;
 using System.Xml;
 using System.Linq;
 using NUnit.Framework;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Framework;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.Utils;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Utils;
 using XCore;
-using SIL.FieldWorks.FDO.FDOTests;
 using SIL.FieldWorks.Common.FwUtils;
 
 namespace SIL.FieldWorks.XWorks
@@ -42,7 +42,7 @@ namespace SIL.FieldWorks.XWorks
 		{
 		}
 
-		public void Init(FdoCache cache)
+		public void Init(LcmCache cache)
 		{
 			InitMediatorValues(cache);
 		}
@@ -227,7 +227,7 @@ namespace SIL.FieldWorks.XWorks
 		/// Gets the cache.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		public FdoCache Cache { get; set; }
+		public LcmCache Cache { get; set; }
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -495,6 +495,12 @@ namespace SIL.FieldWorks.XWorks
 				return FwSubKey.LexText;
 			}
 		}
+
+		public override string WindowClassName
+		{
+			// doesn't really matter what we return when running tests
+			get { return "fieldworks-tests"; }
+		}
 	}
 
 	[TestFixture]
@@ -504,7 +510,6 @@ namespace SIL.FieldWorks.XWorks
 		protected FwXApp m_application;
 		protected string m_configFilePath;
 
-		private ITsStrFactory m_tssFact;
 		private ICmPossibilityFactory m_possFact;
 		private ICmPossibilityRepository m_possRepo;
 		private IPartOfSpeechFactory m_posFact;
@@ -558,7 +563,6 @@ namespace SIL.FieldWorks.XWorks
 		{
 			Assert.True(Cache != null, "No cache yet!?");
 			var servLoc = Cache.ServiceLocator;
-			m_tssFact = Cache.TsStrFactory;
 			m_possFact = servLoc.GetInstance<ICmPossibilityFactory>();
 			m_possRepo = servLoc.GetInstance<ICmPossibilityRepository>();
 			m_posFact = servLoc.GetInstance<IPartOfSpeechFactory>();
@@ -578,6 +582,7 @@ namespace SIL.FieldWorks.XWorks
 		[TestFixtureTearDown]
 		public void FixtureCleanUp()
 		{
+			TearDown();
 			m_application.Dispose();
 			if (m_window != null)
 			{
@@ -587,6 +592,11 @@ namespace SIL.FieldWorks.XWorks
 			}
 			m_application = null;
 			FwRegistrySettings.Release();
+		}
+
+		protected virtual void TearDown()
+		{
+			// overridden by BulkEditBarTestBase
 		}
 
 		protected Mediator Mediator
@@ -693,29 +703,6 @@ namespace SIL.FieldWorks.XWorks
 		}
 
 		/// <summary>
-		/// Will find a complex entry type (if one exists) with the given (analysis ws) name.
-		/// If not found, will create the complex entry type in the Lexicon ComplexEntryTypes list.
-		/// </summary>
-		/// <param name="complexTypeName"></param>
-		/// <returns></returns>
-		protected ILexEntryType GetComplexTypeOrCreateOne(string complexTypeName)
-		{
-			Assert.IsNotNull(m_possFact, "Fixture Initialization is not complete.");
-			Assert.IsNotNull(m_window, "No window.");
-			var poss = m_possRepo.AllInstances().Where(
-				someposs => someposs.Name.AnalysisDefaultWritingSystem.Text == complexTypeName).FirstOrDefault();
-			if (poss != null)
-				return poss as ILexEntryType;
-			// shouldn't get past here; they're already defined.
-			var owningList = Cache.LangProject.LexDbOA.ComplexEntryTypesOA;
-			Assert.IsNotNull(owningList, "No ComplexEntryTypes property on Lexicon object.");
-			var ws = Cache.DefaultAnalWs;
-			poss = m_possFact.Create(new Guid(), owningList);
-			poss.Name.set_String(ws, complexTypeName);
-			return poss as ILexEntryType;
-		}
-
-		/// <summary>
 		/// Will find a grammatical category (if one exists) with the given (analysis ws) name.
 		/// If not found, will create a category as a subpossibility of a grammatical category.
 		/// </summary>
@@ -771,7 +758,7 @@ namespace SIL.FieldWorks.XWorks
 			return category;
 		}
 
-		protected ILexEntry AddLexeme(List<ICmObject> addList, string lexForm, string citationForm,
+		protected ILexEntry AddLexeme(IList<ICmObject> addList, string lexForm, string citationForm,
 			IMoMorphType morphTypePoss, string gloss, IPartOfSpeech catPoss)
 		{
 			var ws = Cache.DefaultVernWs;
@@ -780,34 +767,35 @@ namespace SIL.FieldWorks.XWorks
 			return le;
 		}
 
-		protected ILexEntry AddLexeme(List<ICmObject> addList, string lexForm, IMoMorphType morphTypePoss,
+		protected ILexEntry AddLexeme(IList<ICmObject> addList, string lexForm, IMoMorphType morphTypePoss,
 			string gloss, IPartOfSpeech categoryPoss)
 		{
 			var msa = new SandboxGenericMSA { MainPOS = categoryPoss };
 			var comp = new LexEntryComponents { MorphType = morphTypePoss, MSA = msa };
-			comp.GlossAlternatives.Add(m_tssFact.MakeString(gloss, Cache.DefaultAnalWs));
-			comp.LexemeFormAlternatives.Add(m_tssFact.MakeString(lexForm, Cache.DefaultVernWs));
+			comp.GlossAlternatives.Add(TsStringUtils.MakeString(gloss, Cache.DefaultAnalWs));
+			comp.LexemeFormAlternatives.Add(TsStringUtils.MakeString(lexForm, Cache.DefaultVernWs));
 			var entry = m_entryFact.Create(comp);
 			addList.Add(entry);
 			return entry;
 		}
 
-		protected ILexEntry AddVariantLexeme(List<ICmObject> addList, IVariantComponentLexeme origLe,
+		protected ILexEntry AddVariantLexeme(IList<ICmObject> addList, IVariantComponentLexeme origLe,
 			string lexForm, IMoMorphType morphTypePoss, string gloss, IPartOfSpeech categoryPoss,
 			ILexEntryType varType)
 		{
 			Assert.IsNotNull(varType, "Need a variant entry type!");
 			var msa = new SandboxGenericMSA { MainPOS = categoryPoss };
 			var comp = new LexEntryComponents { MorphType = morphTypePoss, MSA = msa };
-			comp.GlossAlternatives.Add(m_tssFact.MakeString(gloss, Cache.DefaultAnalWs));
-			comp.LexemeFormAlternatives.Add(m_tssFact.MakeString(lexForm, Cache.DefaultVernWs));
+			comp.GlossAlternatives.Add(TsStringUtils.MakeString(gloss, Cache.DefaultAnalWs));
+			comp.LexemeFormAlternatives.Add(TsStringUtils.MakeString(lexForm, Cache.DefaultVernWs));
 			var entry = m_entryFact.Create(comp);
-			entry.MakeVariantOf(origLe, varType);
+			var ler = entry.MakeVariantOf(origLe, varType);
 			addList.Add(entry);
+			addList.Add(ler);
 			return entry;
 		}
 
-		protected ILexSense AddSenseToEntry(List<ICmObject> addList, ILexEntry le, string gloss,
+		protected ILexSense AddSenseToEntry(IList<ICmObject> addList, ILexEntry le, string gloss,
 			IPartOfSpeech catPoss)
 		{
 			var msa = new SandboxGenericMSA();
@@ -817,7 +805,7 @@ namespace SIL.FieldWorks.XWorks
 			return sense;
 		}
 
-		protected ILexSense AddSubSenseToSense(List<ICmObject> addList, ILexSense ls, string gloss,
+		protected ILexSense AddSubSenseToSense(IList<ICmObject> addList, ILexSense ls, string gloss,
 			IPartOfSpeech catPoss)
 		{
 			var msa = new SandboxGenericMSA();
@@ -829,7 +817,7 @@ namespace SIL.FieldWorks.XWorks
 			return sense;
 		}
 
-		protected void AddStemAllomorphToEntry(List<ICmObject> addList, ILexEntry le, string alloName,
+		protected void AddStemAllomorphToEntry(IList<ICmObject> addList, ILexEntry le, string alloName,
 			IPhEnvironment env)
 		{
 			var allomorph = m_stemFact.Create();
@@ -840,7 +828,7 @@ namespace SIL.FieldWorks.XWorks
 			addList.Add(allomorph);
 		}
 
-		protected void AddAffixAllomorphToEntry(List<ICmObject> addList, ILexEntry le, string alloName,
+		protected void AddAffixAllomorphToEntry(IList<ICmObject> addList, ILexEntry le, string alloName,
 			IPhEnvironment env)
 		{
 			var allomorph = m_affixFact.Create();

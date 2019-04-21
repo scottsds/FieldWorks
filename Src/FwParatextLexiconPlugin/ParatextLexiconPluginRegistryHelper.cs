@@ -3,12 +3,10 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 using Microsoft.Win32;
-using SIL.FieldWorks.Common.FwUtils;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace SIL.FieldWorks.ParatextLexiconPlugin
 {
@@ -40,6 +38,9 @@ namespace SIL.FieldWorks.ParatextLexiconPlugin
 			}
 		}
 
+		/// <summary>
+		/// Is Fieldworks installed, based on querying the registry.
+		/// </summary>
 		public static bool IsFieldWorksInstalled
 		{
 			get
@@ -51,15 +52,11 @@ namespace SIL.FieldWorks.ParatextLexiconPlugin
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Disposed in caller.")]
 		public static RegistryKey FieldWorksRegistryKey
 		{
 			get { return RegistryHelper.SettingsKey(FWMajorVersion); }
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Disposed in caller.")]
 		public static RegistryKey FieldWorksRegistryKeyLocalMachine
 		{
 			get { return RegistryHelper.SettingsKeyLocalMachine(FWMajorVersion); }

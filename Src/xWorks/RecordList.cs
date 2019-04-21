@@ -1,9 +1,7 @@
-// Copyright (c) 2004-2015 SIL International
+// Copyright (c) 2004-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: RecordList.cs
-// History: John Hatton, created
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,18 +11,22 @@ using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainImpl;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.FieldWorks.FdoUi;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainImpl;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.Filters;
+using SIL.ObjectModel;
 using SIL.Reporting;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using XCore;
 using ConfigurationException = SIL.Utils.ConfigurationException;
@@ -113,13 +115,13 @@ namespace SIL.FieldWorks.XWorks
 		/// Exception: If owner is "unowned", then property should be a GUID of a list that
 		/// we'll get from the ICmPossibilityListRepository.
 		/// </summary>
-		public override void Init(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		public override void Init(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			CheckDisposed();
 
 			BaseInit(cache, mediator, propertyTable, recordListNode);
-			string owner = XmlUtils.GetManditoryAttributeValue(recordListNode, "owner");
-			string property = XmlUtils.GetManditoryAttributeValue(recordListNode, "property");
+			string owner = XmlUtils.GetMandatoryAttributeValue(recordListNode, "owner");
+			string property = XmlUtils.GetMandatoryAttributeValue(recordListNode, "property");
 			m_owningObject = GetListFromOwnerAndProperty(cache, owner, property);
 			Debug.Assert(m_owningObject != null, "Illegal owner or other problem in spec for possibility list.");
 			m_oldLength = 0;
@@ -130,7 +132,7 @@ namespace SIL.FieldWorks.XWorks
 			m_flid  = CmPossibilityListTags.kflidPossibilities;
 		}
 
-		public static ICmObject GetListFromOwnerAndProperty(FdoCache cache, string owner, string property)
+		public static ICmObject GetListFromOwnerAndProperty(LcmCache cache, string owner, string property)
 		{
 			ICmObject obj = null;
 
@@ -262,7 +264,7 @@ namespace SIL.FieldWorks.XWorks
 			string owningFieldName = pssl.Name.BestAnalysisAlternative.Text;
 			if (pssl.OwningFlid != 0)
 				owningFieldName = VirtualListPublisher.MetaDataCache.GetFieldName(pssl.OwningFlid);
-			string itemTypeName = pssl.ItemsTypeName();
+			string itemTypeName = CmPossibilityUi.GetPossibilityDisplayName(pssl);
 			if (itemTypeName != "*" + owningFieldName + "*")
 				display.Text = "_" + itemTypeName;	// prepend a keyboard accelarator marker
 			string toolTipInsert = display.Text.Replace("_", string.Empty);	// strip any menu keyboard accelerator marker;
@@ -572,7 +574,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
 		/// <param name="recordListNode"></param>
-		public override void Init(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		public override void Init(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			CheckDisposed();
 			// suspend loading the property until given a class by RecordBrowseView via
@@ -589,7 +591,6 @@ namespace SIL.FieldWorks.XWorks
 			string owner = XmlUtils.GetOptionalAttributeValue(recordListNode, "owner");
 			// by default we'll setup for Entries
 			GetTargetFieldInfo(LexEntryTags.kClassId, owner, 0, out m_owningObject, out m_flid, out m_propertyName);
-
 		}
 
 		protected override void DisposeManagedResources()
@@ -731,11 +732,9 @@ namespace SIL.FieldWorks.XWorks
 				return -1;
 			}
 			// we've changed list items class, so find the corresponding new object.
-			Set<int> commonAncestors;
-			Set<int> relatives = m_pot.FindCorrespondingItemsInCurrentList(m_prevFlid,
-				new Set<int>(new int[] {hvoCurrentBeforeGetObjectSet}),
-				m_flid,
-				out commonAncestors);
+			ISet<int> commonAncestors;
+			ISet<int> relatives = m_pot.FindCorrespondingItemsInCurrentList(m_prevFlid, new HashSet<int> {hvoCurrentBeforeGetObjectSet},
+				m_flid, out commonAncestors);
 			int newHvoRoot = relatives.Count > 0 ? relatives.ToArray()[0] : 0;
 			int hvoCommonAncestor = commonAncestors.Count > 0 ? commonAncestors.ToArray()[0] : 0;
 			if (newHvoRoot == 0 && hvoCommonAncestor != 0)
@@ -806,12 +805,10 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// See documentation for IMultiListSortItemProvider
 		/// </summary>
-		/// <param name="itemAndListSourceTokenPairs"></param>
-		/// <returns></returns>
 		public void ConvertItemsToRelativesThatApplyToCurrentList(ref IDictionary<int, object> oldItems)
 		{
-			Set<int> oldItemsToRemove = new Set<int>();
-			Set<int> itemsToAdd = new Set<int>();
+			var oldItemsToRemove = new HashSet<int>();
+			var itemsToAdd = new HashSet<int>();
 			// Create a PartOwnershipTree in a mode that can return more than one descendent relatives.
 			using (PartOwnershipTree pot = PartOwnershipTree.Create(Cache, this, false))
 			{
@@ -819,12 +816,12 @@ namespace SIL.FieldWorks.XWorks
 				{
 					IDictionary<int, object> dictOneOldItem = new Dictionary<int, object>();
 					dictOneOldItem.Add(oldItem);
-					Set<int> relatives = FindCorrespondingItemsInCurrentList(dictOneOldItem, pot);
+					HashSet<int> relatives = FindCorrespondingItemsInCurrentList(dictOneOldItem, pot);
 
 					// remove the old item if we found relatives we could convert over to.
 					if (relatives.Count > 0)
 					{
-						itemsToAdd.AddRange(relatives);
+						itemsToAdd.UnionWith(relatives);
 						oldItemsToRemove.Add(oldItem.Key);
 					}
 				}
@@ -842,25 +839,25 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
-		private Set<int> FindCorrespondingItemsInCurrentList(IDictionary<int, object> itemAndListSourceTokenPairs, PartOwnershipTree pot)
+		private HashSet<int> FindCorrespondingItemsInCurrentList(IDictionary<int, object> itemAndListSourceTokenPairs,
+			PartOwnershipTree pot)
 		{
 			// create a reverse index of classes to a list of items
-			IDictionary<int, Set<int>> sourceFlidsToItems = MapSourceFlidsToItems(itemAndListSourceTokenPairs);
+			IDictionary<int, HashSet<int>> sourceFlidsToItems = MapSourceFlidsToItems(itemAndListSourceTokenPairs);
 
-			Set<int> relativesInCurrentList = new Set<int>();
-				foreach (KeyValuePair<int, Set<int>> sourceFlidToItems in sourceFlidsToItems)
-				{
-					Set<int> commonAncestors;
-					relativesInCurrentList.AddRange(pot.FindCorrespondingItemsInCurrentList(sourceFlidToItems.Key,
-																			 sourceFlidToItems.Value, m_flid,
-																			 out commonAncestors));
-				}
+			var relativesInCurrentList = new HashSet<int>();
+			foreach (KeyValuePair<int, HashSet<int>> sourceFlidToItems in sourceFlidsToItems)
+			{
+				ISet<int> commonAncestors;
+				relativesInCurrentList.UnionWith(pot.FindCorrespondingItemsInCurrentList(sourceFlidToItems.Key, sourceFlidToItems.Value,
+					m_flid, out commonAncestors));
+			}
 			return relativesInCurrentList;
 		}
 
-		private IDictionary<int, Set<int>> MapSourceFlidsToItems(IDictionary<int, object> itemAndListSourceTokenPairs)
+		private IDictionary<int, HashSet<int>> MapSourceFlidsToItems(IDictionary<int, object> itemAndListSourceTokenPairs)
 		{
-			IDictionary<int, Set<int>> sourceFlidsToItems = new Dictionary<int, Set<int>>();
+			var sourceFlidsToItems = new Dictionary<int, HashSet<int>>();
 			foreach (KeyValuePair<int, object> itemAndSourceTag in itemAndListSourceTokenPairs)
 			{
 				if ((int)itemAndSourceTag.Value == m_flid)
@@ -870,10 +867,10 @@ namespace SIL.FieldWorks.XWorks
 					// a previous list, not the current one)
 					continue;
 				}
-				Set<int> itemsInSourceFlid;
+				HashSet<int> itemsInSourceFlid;
 				if (!sourceFlidsToItems.TryGetValue((int)itemAndSourceTag.Value, out itemsInSourceFlid))
 				{
-					itemsInSourceFlid = new Set<int>();
+					itemsInSourceFlid = new HashSet<int>();
 					sourceFlidsToItems.Add((int)itemAndSourceTag.Value, itemsInSourceFlid);
 				}
 				itemsInSourceFlid.Add(itemAndSourceTag.Key);
@@ -892,7 +889,7 @@ namespace SIL.FieldWorks.XWorks
 		private XmlNode m_configNode;
 		private IEnumerable<int> m_objs = null;
 
-		public override void Init(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		public override void Init(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			m_fEnableSendPropChanged = false;
 			m_configNode = recordListNode;
@@ -949,7 +946,7 @@ namespace SIL.FieldWorks.XWorks
 	/// </summary>
 	/// <remarks>RecordList is not XCore aware but is aware of RecordSorter and RecordFilter.
 	/// </remarks>
-	public class RecordList : FwDisposableBase, IVwNotifyChange, ISortItemProvider
+	public class RecordList : DisposableBase, IVwNotifyChange, ISortItemProvider
 	{
 		#region Events
 
@@ -966,7 +963,7 @@ namespace SIL.FieldWorks.XWorks
 
 		private const int RecordListFlid = 89999956;
 
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		/// <summary>
 		/// Use this to do the Add/RemoveNotifications, since it can be used in the unmanged section of Dispose.
 		/// (If m_sda is COM, that is.)
@@ -1074,7 +1071,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="recordListNode"></param>
 		/// <param name="mediator"></param>
 		/// <returns></returns>
-		static public RecordList Create(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		static public RecordList Create(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			RecordList list = null;
 
@@ -1101,7 +1098,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="analysisWs">pass in 'true' for the DefaultAnalysisWritingSystem
 		/// pass in 'false' for the DefaultVernacularWritingSystem</param>
 		/// <returns>return Font size from stylesheet</returns>
-		static protected int GetFontHeightFromStylesheet(FdoCache cache, PropertyTable propertyTable, bool analysisWs)
+		static protected int GetFontHeightFromStylesheet(LcmCache cache, PropertyTable propertyTable, bool analysisWs)
 		{
 			int fontHeight;
 			IVwStylesheet stylesheet = FontHeightAdjuster.StyleSheetFromPropertyTable(propertyTable);
@@ -1123,7 +1120,7 @@ namespace SIL.FieldWorks.XWorks
 			return fontHeight;
 		}
 
-		public virtual void Init(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		public virtual void Init(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			CheckDisposed();
 
@@ -1143,15 +1140,15 @@ namespace SIL.FieldWorks.XWorks
 				m_fontName = MiscUtils.StandardSansSerif;
 				// Only other current option is to specify an ordinary property (or a virtual one).
 				m_flid = VirtualListPublisher.MetaDataCache.GetFieldId(
-					XmlUtils.GetManditoryAttributeValue(recordListNode, "class"),
-					XmlUtils.GetManditoryAttributeValue(recordListNode, "field"), true);
+					XmlUtils.GetMandatoryAttributeValue(recordListNode, "class"),
+					XmlUtils.GetMandatoryAttributeValue(recordListNode, "field"), true);
 				// Review JohnH(JohnT): This is only useful for dependent clerks, but I don't know how to check this is one.
 				m_owningObject = null;
 			}
 			m_oldLength = 0;
 		}
 
-		protected void BaseInit(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		protected void BaseInit(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			Debug.Assert(mediator != null);
 
@@ -1280,11 +1277,7 @@ namespace SIL.FieldWorks.XWorks
 			get
 			{
 				CheckDisposed();
-				// we only have a reference to the filter which means that it might have been
-				// disposed. In that case treat it as if we wouldn't have a filter.
-				var disposable = m_filter as IFWDisposable;
-				if (disposable != null && disposable.IsDisposed)
-					m_filter = null;
+
 				return m_filter;
 			}
 			set
@@ -1599,7 +1592,7 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			get
 			{
@@ -1626,7 +1619,7 @@ namespace SIL.FieldWorks.XWorks
 		}
 		#endregion Properties
 
-		#region FwDisposableBase
+		#region DisposableBase
 
 		protected override void DisposeManagedResources()
 		{
@@ -1661,7 +1654,13 @@ namespace SIL.FieldWorks.XWorks
 			m_owningObject = null;
 		}
 
-		#endregion FwDisposableBase
+		protected override void Dispose(bool disposing)
+		{
+			Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + " ******");
+			base.Dispose(disposing);
+		}
+
+		#endregion DisposableBase
 
 		#region IVwNotifyChange implementation
 
@@ -2269,9 +2268,9 @@ namespace SIL.FieldWorks.XWorks
 				int cOrigSortObjects = m_sortedObjects.Count;
 				// Note: We start with a Set, since it can't have duplicates.
 				// First remove the given hvos from our sort items.
-				Set<int> unwantedIndices = new Set<int>(IndicesOfSortItems(hvosToRemove));
+				var unwantedIndices = new HashSet<int>(IndicesOfSortItems(hvosToRemove));
 				// then remove any remaining items that point to invalid objects.
-				unwantedIndices.AddRange(IndicesOfInvalidSortItems());
+				unwantedIndices.UnionWith(IndicesOfInvalidSortItems());
 				// Put the now unique indices into a list,
 				// so we can make sure they are processed in reverse order.
 				List<int> sortedIndices = new List<int>(unwantedIndices.ToArray());
@@ -2714,13 +2713,13 @@ namespace SIL.FieldWorks.XWorks
 				{
 					newSortedObjects = GetFilteredSortedList();
 				}
-				catch (FDOInvalidFieldException)
+				catch (LcmInvalidFieldException)
 				{
 					newSortedObjects = HandleInvalidFilterSortField();
 				}
 				catch(ConfigurationException ce)
 				{
-					if (ce.InnerException is FDOInvalidFieldException)
+					if (ce.InnerException is LcmInvalidFieldException)
 						newSortedObjects = HandleInvalidFilterSortField();
 					else
 						throw;
@@ -3145,7 +3144,7 @@ namespace SIL.FieldWorks.XWorks
 			CheckDisposed();
 
 			ClassAndPropInfo cpi = GetMatchingClass(className);
-			Debug.Assert(cpi != null, "This object should not have been asked to insert an object of the class "+ className +".");
+			Debug.Assert(cpi != null, "This object should not have been asked to insert an object of the class " + className + ".");
 			if (cpi != null)
 			{
 				List<ClassAndPropInfo> cpiPath;
@@ -3223,7 +3222,6 @@ namespace SIL.FieldWorks.XWorks
 			{
 				return List.CreateNewObject(HvoOwner, CpiPath);
 			}
-
 			#endregion
 		}
 
@@ -3279,7 +3277,7 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		/// <param name="hvo"></param>
 		/// <returns>-1 if the object is not in the list</returns>
-		public int IndexOfChildOf(int hvoTarget, FdoCache cache)
+		public int IndexOfChildOf(int hvoTarget, LcmCache cache)
 		{
 			CheckDisposed();
 
@@ -3312,20 +3310,21 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		/// <param name="hvo"></param>
 		/// <returns>-1 if the object is not in the list</returns>
-		public int IndexOfParentOf(int hvoTarget, FdoCache cache)
+		public int IndexOfParentOf(int hvoTarget, LcmCache cache)
 		{
 			CheckDisposed();
 
 			// If the list is made up of fake objects, we can't find one of them that our target owns,
 			// and trying to will crash, so give up.
 			if (SortedObjects.Count == 0 ||
-				!m_cache.ServiceLocator.ObjectRepository.IsValidObjectId(((IManyOnePathSortItem)SortedObjects[0]).RootObjectHvo))
+				!m_cache.ServiceLocator.ObjectRepository.IsValidObjectId(((IManyOnePathSortItem)SortedObjects[0]).RootObjectHvo) ||
+				!m_cache.ServiceLocator.ObjectRepository.IsValidObjectId(hvoTarget))
 			{
 				return -1;
 			}
 
 			var target = m_cache.ServiceLocator.ObjectRepository.GetObject(hvoTarget);
-			var owners = new Set<int>();
+			var owners = new HashSet<int>();
 			for(var owner = target.Owner; owner != null; owner = owner.Owner)
 				owners.Add(owner.Hvo);
 
@@ -3363,7 +3362,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="typeSize"></param>
 		/// <returns>The real flid of the vector in the database.</returns>
 		internal int GetFlidOfVectorFromName(string name, string owner, bool analysisWs,
-			FdoCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject, out string fontName,
+			LcmCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject, out string fontName,
 			out int typeSize)
 		{
 			// Many of these are vernacular, but if not,
@@ -3373,7 +3372,7 @@ namespace SIL.FieldWorks.XWorks
 			return GetFlidOfVectorFromName(name, owner, cache, mediator, propertyTable, out owningObject, ref fontName, ref typeSize);
 		}
 
-		internal int GetFlidOfVectorFromName(string propertyName, string owner, FdoCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject)
+		internal int GetFlidOfVectorFromName(string propertyName, string owner, LcmCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject)
 		{
 			string fontName = "";
 			int typeSize = 0;
@@ -3392,7 +3391,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="fontName"></param>
 		/// <param name="typeSize"></param>
 		/// <returns></returns>
-		internal int GetFlidOfVectorFromName(string name, string owner, FdoCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject, ref string fontName, ref int typeSize)
+		internal int GetFlidOfVectorFromName(string name, string owner, LcmCache cache, Mediator mediator, PropertyTable propertyTable, out ICmObject owningObject, ref string fontName, ref int typeSize)
 		{
 			var defAnalWsFontName = cache.ServiceLocator.WritingSystems.DefaultAnalysisWritingSystem.DefaultFontName;
 			owningObject = null;
@@ -3605,7 +3604,7 @@ namespace SIL.FieldWorks.XWorks
 			return realFlid;
 		}
 
-		internal static void GetDefaultFontNameAndSize(bool analysisWs, FdoCache cache, PropertyTable propertyTable, out string fontName, out int typeSize)
+		internal static void GetDefaultFontNameAndSize(bool analysisWs, LcmCache cache, PropertyTable propertyTable, out string fontName, out int typeSize)
 		{
 			IWritingSystemContainer wsContainer = cache.ServiceLocator.WritingSystems;
 			fontName = analysisWs
@@ -3677,7 +3676,7 @@ namespace SIL.FieldWorks.XWorks
 				if (!IsCurrentObjectValid() || !thingToDelete.IsValidObject)
 					return;
 				m_deletingObject = true;
-				FdoCache cache = m_cache;
+				LcmCache cache = m_cache;
 				var currentObject = CurrentObject;
 				// This looks plausible; but for example IndexOf may reload the list, if a reload is pending;
 				// and the current object may no longer match the current filter, so it may be gone.
@@ -3822,6 +3821,6 @@ namespace SIL.FieldWorks.XWorks
 	/// </summary>
 	public interface ISetCache
 	{
-		void SetCache(FdoCache cache);
+		void SetCache(LcmCache cache);
 	}
 }

@@ -1,25 +1,25 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.Utils;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
+using SIL.FieldWorks.Common.FwUtils;
 using SIL.WritingSystems;
+using System.Text.RegularExpressions;
 
 namespace SIL.FieldWorks.FwCoreDlgControls
 {
 	/// <summary>
 	/// Summary description for RegionVariantControl.
 	/// </summary>
-	public class RegionVariantControl : UserControl, IFWDisposable
+	public class RegionVariantControl : UserControl
 	{
 		private Label m_variantNameLabel;
 		// Note: this currently has a max length set to 30. This is to ensure that any
@@ -74,6 +74,13 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 		{
 			// This call is required by the Windows.Forms Form Designer.
 			InitializeComponent();
+		}
+
+		/// <summary/>
+		protected override void Dispose(bool disposing)
+		{
+			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + ". ******");
+			base.Dispose(disposing);
 		}
 
 		#region Component Designer generated code
@@ -277,6 +284,9 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 		{
 			get
 			{
+				if (DesignMode)
+					return null;
+
 				CheckDisposed();
 
 				ScriptSubtag subtag = null;
@@ -397,7 +407,8 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 				{
 					string code = m_variantAbbrev.Text.Trim();
 					IEnumerable<VariantSubtag> variantSubtags;
-					if (IetfLanguageTag.TryGetVariantSubtags(code, out variantSubtags))
+					code = Regex.Replace(code, "^x-", "");
+					if (IetfLanguageTag.TryGetVariantSubtags("x-" + code, out variantSubtags, m_variantNameString))
 					{
 						foreach (VariantSubtag variantSubtag in variantSubtags)
 							yield return variantSubtag;
@@ -586,8 +597,6 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 		/// to the user and return false. This should prevent the user from closing the
 		/// containing form using OK, but not from cancelling.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		public bool CheckValid()
 		{
 			CheckDisposed();
@@ -638,29 +647,31 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 
 			VariantSubtag[] variantSubtags = VariantSubtags.ToArray();
 			// Can't allow a variant name without an abbreviation.
-			if (variantSubtags.Length == 0 && !string.IsNullOrEmpty(m_variantName.Text.Trim()))
+			if (string.IsNullOrEmpty(m_variantAbbrev.Text.Trim()) && !string.IsNullOrEmpty(m_variantName.Text.Trim()))
 			{
 				MessageBox.Show(FindForm(), FwCoreDlgControls.kstidMissingVarAbbr, caption);
 				return false;
 			}
-			foreach (VariantSubtag variantSubtag in variantSubtags)
-			{
-				if (variantSubtag.IsPrivateUse)
-				{
-					if (StandardSubtags.RegisteredVariants.Contains(variantSubtag.Code))
-					{
-						MessageBox.Show(FindForm(), FwCoreDlgControls.kstidDupVarAbbr, caption);
-						return false;
-					}
-					if (!IetfLanguageTag.IsValidPrivateUseCode(variantSubtag.Code))
-					{
-						MessageBox.Show(FindForm(), FwCoreDlgControls.kstidInvalidVarAbbr, caption);
-						return false;
-					}
-				}
-			}
+
 			if (variantSubtags.Length > 0)
 			{
+				foreach (VariantSubtag variantSubtag in variantSubtags)
+				{
+					if (variantSubtag.IsPrivateUse)
+					{
+						if (StandardSubtags.RegisteredVariants.Contains(variantSubtag.Code))
+						{
+							MessageBox.Show(FindForm(), FwCoreDlgControls.kstidDupVarAbbr, caption);
+							return false;
+						}
+						if (!IetfLanguageTag.IsValidPrivateUseCode(variantSubtag.Code))
+						{
+							MessageBox.Show(FindForm(), FwCoreDlgControls.kstidInvalidVarAbbr, caption);
+							return false;
+						}
+					}
+				}
+
 				List<string> parts = variantSubtags.Select(v => v.Code).ToList();
 				// If these subtags are private use, the first element of each must also be distinct.
 				if (m_ws.Language.IsPrivateUse)
@@ -826,7 +837,7 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 				if (variantSubtag == WellKnownSubtags.IpaPhonemicPrivateUse || variantSubtag == WellKnownSubtags.IpaPhoneticPrivateUse)
 					m_variantAbbrev.Text = WellKnownSubtags.IpaVariant + "-x-" + variantSubtag.Code;
 				else
-					m_variantAbbrev.Text = variantSubtag.IsPrivateUse ? "x-" : variantSubtag.Code;
+					m_variantAbbrev.Text = variantSubtag.IsPrivateUse ? "x-" + variantSubtag.Code : variantSubtag.Code;
 				m_variantAbbrev.Enabled = variantSubtag.IsPrivateUse && !StandardSubtags.CommonPrivateUseVariants.Contains(variantSubtag);
 			}
 			else if (string.IsNullOrEmpty(variantName))
@@ -916,6 +927,7 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 		/// <param name="e"></param>
 		private void m_variantCode_KeyPress(object sender, KeyPressEventArgs e)
 		{
+			m_enableLangTagSideEffects = false;
 			HandleKeyPress(e);
 		}
 
@@ -926,7 +938,7 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 			{
 				// Stop the character from being entered into the control since it is not valid.
 				e.Handled = true;
-				MiscUtils.ErrorBeep();
+				FwUtils.ErrorBeep();
 			}
 		}
 
@@ -979,6 +991,8 @@ namespace SIL.FieldWorks.FwCoreDlgControls
 			// is needed.)
 			if (m_enableLangTagSideEffects)
 				OnScriptRegionVariantChanged(EventArgs.Empty);
+			else
+				HandleAudioVariant();
 		}
 
 		/// <summary>

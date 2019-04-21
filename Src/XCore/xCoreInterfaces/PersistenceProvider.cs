@@ -3,7 +3,6 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using SIL.Windows.Forms;
@@ -13,8 +12,6 @@ namespace XCore
 	/// <summary>
 	///  A PersistenceProvider which uses the XCore PropertyTable
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification = "variable is a reference; it is owned by parent")]
 	public class PersistenceProvider : IPersistenceProvider
 	{
 		protected string m_contextString;

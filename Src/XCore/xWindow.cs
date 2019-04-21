@@ -1,18 +1,11 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: XWindow.cs
-// Authorship History: John Hatton
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -22,6 +15,7 @@ using System.Windows.Forms.VisualStyles;
 using System.Xml;
 using Microsoft.Win32;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 
 namespace XCore
@@ -29,7 +23,7 @@ namespace XCore
 	/// <summary>
 	/// XWindow is a window which is configured with XML file.
 	/// </summary>
-	public class XWindow : Form, IFWDisposable, IxCoreColleague, IxWindow
+	public class XWindow : Form, IxCoreColleague, IxWindow
 	{
 		#region Data members
 		/// <summary>
@@ -93,7 +87,7 @@ namespace XCore
 		protected bool m_persistWindowSize = true;
 		protected Mediator m_mediator;
 		protected PropertyTable m_propertyTable;
-		protected Set<IUIAdapter> m_adapters = new Set<IUIAdapter>();
+		protected HashSet<IUIAdapter> m_adapters = new HashSet<IUIAdapter>();
 		protected ChoiceGroupCollection m_menusChoiceGroupCollection;
 		protected ChoiceGroupCollection m_sidebarChoiceGroupCollection;
 		protected ChoiceGroupCollection m_toolbarsChoiceGroupCollection;
@@ -110,7 +104,7 @@ namespace XCore
 		protected ImageCollection m_smallImages = new ImageCollection(false);
 		protected ImageCollection m_largeImages = new ImageCollection(true);
 		private Timer m_widgetUpdateTimer;
-		private const int WM_BROADCAST_ITEM_INQUEUE = 0x8000+0x77;	// wm_app + 0x77 : msg for mediator defered broadcast calls
+		private const int WM_BROADCAST_ITEM_INQUEUE = 0x8000 + 0x77;    // wm_app + 0x77 : msg for mediator defered broadcast calls
 		private IContainer components = null;
 		// Used to count the number of times we've been asked to suspend Idle processing.
 		private int m_cSuspendIdle = 0;
@@ -302,8 +296,6 @@ namespace XCore
 		/// <param name="parentControl"></param>
 		/// <param name="nameOfChildToFocus"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "controls contains references")]
 		public static Control FindControl(Control parentControl, string nameOfChildToFocus)
 		{
 			Control firstControl = null;
@@ -437,7 +429,7 @@ namespace XCore
 			AccessibleName = GetType().Name;
 			BootstrapPart1();
 
-			m_smallImages.AddList(builtInImages,new[]{"default"}); //a question mark for when icons are missing
+			m_smallImages.AddList(builtInImages, new[] { "default" }); //a question mark for when icons are missing
 			m_largeImages.AddList(builtInImages, new[] { "default" }); //a question mark for when icons are missing
 		}
 
@@ -473,8 +465,6 @@ namespace XCore
 			m_largeImages.AddList(images, labels);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected void LoadResources(XmlNode configurationNode)
 		{
 			if (configurationNode == null)
@@ -495,16 +485,14 @@ namespace XCore
 		//which are different from the defaults that can be found in the code. That is,
 		//Code should still set default values and not rely on someone including a default definition
 		//in the configuration file.
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected void LoadDefaultProperties(XmlNode configurationNode)
 		{
 			if (configurationNode == null)
 				return;
 
-			foreach(XmlNode node in configurationNode.SelectNodes("property"))
+			foreach (XmlNode node in configurationNode.SelectNodes("property"))
 			{
-				string name = XmlUtils.GetManditoryAttributeValue(node, "name");
+				string name = XmlUtils.GetMandatoryAttributeValue(node, "name");
 				string listId = XmlUtils.GetOptionalAttributeValue(node, "list");
 				// get the settingsGroup for this property.
 				PropertyTable.SettingsGroup settingsGroup = ChoiceGroup.GetSettingsGroup(node, PropertyTable.SettingsGroup.Undecided);
@@ -518,7 +506,7 @@ namespace XCore
 				 */
 				if (!string.IsNullOrEmpty(listId))
 				{
-					string listItemValue = XmlUtils.GetManditoryAttributeValue(node, "listItemValue");
+					string listItemValue = XmlUtils.GetMandatoryAttributeValue(node, "listItemValue");
 					XmlNode listNode = configurationNode.SelectSingleNode("//lists/list[@id='" + listId + "']");
 					if (listNode == null)
 						throw new ConfigurationException("List not found", node);
@@ -531,7 +519,7 @@ namespace XCore
 					ChoiceGroup.ChooseSinglePropertyAtomicValue(m_mediator, m_propertyTable, listItemValue, parametersNode, name,
 						settingsGroup);
 				}
-				else if(node.Attributes["bool"] != null)
+				else if (node.Attributes["bool"] != null)
 				{
 					m_propertyTable.SetDefault(
 						name,
@@ -539,7 +527,7 @@ namespace XCore
 						settingsGroup,
 						true);
 				}
-				else if(node.Attributes["intValue"] != null)
+				else if (node.Attributes["intValue"] != null)
 				{
 					m_propertyTable.SetDefault(
 						name,
@@ -548,7 +536,7 @@ namespace XCore
 						true);
 				}
 					//this one allows us to just create an object on-the-fly and stick it directly in a property.
-				else if(node.Attributes["assemblyPath"] != null)
+				else if (node.Attributes["assemblyPath"] != null)
 				{
 					m_propertyTable.SetDefault(
 						name,
@@ -564,13 +552,13 @@ namespace XCore
 					{
 						m_propertyTable.SetDefault(
 							name,
-							XmlUtils.GetManditoryAttributeValue(node, "value"),
+							XmlUtils.GetMandatoryAttributeValue(node, "value"),
 							settingsGroup,
 							true);
 					}
 				}
 
-				if(node.Attributes["persist"] != null)
+				if (node.Attributes["persist"] != null)
 				{
 					m_propertyTable.SetPropertyPersistence(name, XmlUtils.GetBooleanAttributeValue(node, "persist"), settingsGroup);
 				}
@@ -582,13 +570,11 @@ namespace XCore
 		/// They include objects which launch dialog boxes in response to menu items.
 		/// </summary>
 		/// <param name="configurationNode"></param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected void LoadListeners(XmlNode configurationNode)
 		{
 			if (configurationNode == null)
 				return;
-			foreach(XmlNode node in configurationNode.SelectNodes("listener"))
+			foreach (XmlNode node in configurationNode.SelectNodes("listener"))
 			{
 				Object listener = DynamicLoader.CreateObject(node);
 				// Note: It is up to the colleague to add itself to the mediator's list of colleagues.
@@ -795,9 +781,11 @@ namespace XCore
 
 			// Maybe show the record list.
 			m_recordBar.Dock = DockStyle.Fill;
+			m_recordBar.Size = new Size(200, 300);
 			m_recordBar.TabStop = true;
 			m_recordBar.TabIndex = 1;
 			m_secondarySplitContainer.Panel1Collapsed = !m_propertyTable.GetBoolProperty("ShowRecordList", false);
+
 			// Always show the main content control.
 			m_secondarySplitContainer.Panel1MinSize = CollapsingSplitContainer.kCollapsedSize;
 			m_secondarySplitContainer.Panel2Collapsed = false;
@@ -858,20 +846,7 @@ namespace XCore
 			// We strip file:/ because that's not accepted by LoadFrom()
 			var codeBasePath = FileUtils.StripFilePrefix(Assembly.GetExecutingAssembly().CodeBase);
 			string baseDir = Path.GetDirectoryName(codeBasePath);
-
-			string preferredLibrary = m_propertyTable.GetValue(
-				"PreferredUILibrary", "xCoreOpenSourceAdapter.dll");
-
-			try
-			{
-				adaptorAssembly = Assembly.LoadFrom(Path.Combine(baseDir, preferredLibrary));
-			}
-			catch
-			{
-				adaptorAssembly = Assembly.LoadFrom(
-					Path.Combine(baseDir, "xCoreOpenSourceAdapter.dll"));
-			}
-			Debug.Assert(adaptorAssembly != null, "XCore Could not find an adapter library DLL to use.");
+			adaptorAssembly = Assembly.LoadFrom(Path.Combine(baseDir, m_propertyTable.GetValue("PreferredUILibrary", "FlexUIAdapter.dll")));
 			return adaptorAssembly;
 		}
 
@@ -895,12 +870,12 @@ namespace XCore
 		{
 			CheckDisposed();
 
-			ChoiceGroup group=GetChoiceGroupForMenu(menuId);
+			ChoiceGroup group = GetChoiceGroupForMenu(menuId);
 			group.PopulateNow();
 			ContextMenu m = new ContextMenu();
-			foreach(ChoiceRelatedClass item in group)
+			foreach (ChoiceRelatedClass item in group)
 			{
-				if(item is ChoiceBase)
+				if (item is ChoiceBase)
 				{
 					AdapterMenuItem mi = new AdapterMenuItem();//this is a simple wrapper which adds a tag
 					mi.Text = (item.Label);
@@ -996,8 +971,6 @@ namespace XCore
 		/// </summary>
 		/// <param name="m"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		public XmlNode GetContextMenuNodeFromMenuId(string menuId)
 		{
 			XmlNode node = m_windowConfigurationNode.SelectSingleNode(String.Format("//menu[@id='{0}']",
@@ -1028,15 +1001,15 @@ namespace XCore
 			try
 			{
 				StatusBar bar = new StatusBar();
-				foreach(XmlNode part in configuration.SelectNodes("panel"))
+				foreach (XmlNode part in configuration.SelectNodes("panel"))
 				{
 					StatusBarPanel panel;
-					string id = XmlUtils.GetManditoryAttributeValue(part, "id");
+					string id = XmlUtils.GetMandatoryAttributeValue(part, "id");
 
 					if (part.Attributes.GetNamedItem("assemblyPath") != null)
 					{
 						//load a custom status bar panel control (like the progress bar)
-						panel = (StatusBarPanel) DynamicLoader.CreateObject(part, new object[] {bar});
+						panel = (StatusBarPanel)DynamicLoader.CreateObject(part, new object[] { bar });
 					}
 					else
 					{
@@ -1048,10 +1021,10 @@ namespace XCore
 					string val = XmlUtils.GetOptionalAttributeValue(part, "width");
 					if (val != null)
 					{
-						if(val == "Contents")
+						if (val == "Contents")
 							panel.AutoSize = StatusBarPanelAutoSize.Contents;
 						else
-							panel.Width=int.Parse(val);
+							panel.Width = int.Parse(val);
 					}
 					else
 						panel.AutoSize = StatusBarPanelAutoSize.Spring;
@@ -1081,11 +1054,9 @@ namespace XCore
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "activeForm is a reference")]
 		protected void RestoreWindowSettings(bool wasCrashDuringPreviousStartup)
 		{
-			string id = XmlUtils.GetAttributeValue(m_windowConfigurationNode,"settingsId");
+			string id = XmlUtils.GetAttributeValue(m_windowConfigurationNode, "settingsId");
 			if (id == null)
 				return;
 
@@ -1233,21 +1204,21 @@ namespace XCore
 			string elementName, string adapterClass, out System.Windows.Forms.Control control)
 		{
 			IUIAdapter dummy;
-			return MakeMajorUIPortion( adaptorAssembly, m_windowConfigurationNode,
-				elementName,  adapterClass, out control, out dummy);
+			return MakeMajorUIPortion(adaptorAssembly, m_windowConfigurationNode,
+				elementName, adapterClass, out control, out dummy);
 		}
 
 		protected ChoiceGroupCollection MakeGroupSet(XmlNode m_windowConfigurationNode, IUIAdapter adapter, string elementName)
 		{
 			XmlNode configurationNode = m_windowConfigurationNode.SelectSingleNode(elementName);
-			if (configurationNode== null)
+			if (configurationNode == null)
 				return null; //the configuration did not specify anything for this user interface thatelement
 			ChoiceGroupCollection groupset = new ChoiceGroupCollection(m_mediator, m_propertyTable, adapter, configurationNode);
 			groupset.Init();
 			return groupset;
 		}
 
-		private void  SetInitialContentObject(XmlNode windowConfigurationNode)
+		private void SetInitialContentObject(XmlNode windowConfigurationNode)
 		{
 			//allow colleagues (i.e. a listener that has been installed, or, if there are none of those listening, then
 			//our own "OnSetInitialContentObject" handler, to choose what our initial content control will be.
@@ -1266,15 +1237,15 @@ namespace XCore
 		{
 			CheckDisposed();
 
-			XmlNode contentClassNode =  ((XmlNode)windowConfigurationNode).SelectSingleNode("contentClass");
+			XmlNode contentClassNode = ((XmlNode)windowConfigurationNode).SelectSingleNode("contentClass");
 
-			if(contentClassNode == null)
+			if (contentClassNode == null)
 				throw new ArgumentException("xWindow.OnSetInitialContentObject called. The area listener should have been tried first and handled this. " + m_mediator.GetColleaguesDumpString());
 			else
 				ChangeContentObjectIfPossible(XmlUtils.GetAttributeValue(contentClassNode, "assemblyPath"),
 					XmlUtils.GetAttributeValue(contentClassNode, "class"), contentClassNode);
 
-			return true;	//we handled this.
+			return true;    //we handled this.
 		}
 
 		public bool OnShowNotification(object notificationText)
@@ -1287,7 +1258,7 @@ namespace XCore
 				nw.WaitTime = 4000;
 				nw.Notify();
 			}
-			return true;	//we handled this.
+			return true;    //we handled this.
 		}
 
 		#endregion Initialization
@@ -1302,7 +1273,7 @@ namespace XCore
 		public void CheckDisposed()
 		{
 			if (IsDisposed)
-				throw new ObjectDisposedException(String.Format("'{0}' in use after being disposed.", GetType().Name));
+				throw new ObjectDisposedException(string.Format("'{0}' in use after being disposed.", GetType().Name));
 		}
 
 		/// -----------------------------------------------------------------------------------
@@ -1413,7 +1384,6 @@ namespace XCore
 		/// </summary>
 		private void ShutDownPart2()
 		{
-
 			if (m_mainContentPlaceholderPanel != null && m_mainContentPlaceholderPanel.Parent == null)
 				m_mainContentPlaceholderPanel.Dispose();
 
@@ -1447,8 +1417,6 @@ namespace XCore
 		/// the contents of this method with the code editor.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="TabStop is not implemented on Mono")]
 		private void InitializeComponent()
 		{
 			this.components = new System.ComponentModel.Container();
@@ -1558,11 +1526,11 @@ namespace XCore
 
 		protected override void WndProc(ref Message m)
 		{
-			if (m.Msg == WM_BROADCAST_ITEM_INQUEUE)	// mediator queue message
+			if (m.Msg == WM_BROADCAST_ITEM_INQUEUE) // mediator queue message
 			{
-				m_mediator.ProcessItem();	// let the mediator service an item from the queue
+				m_mediator.ProcessItem();   // let the mediator service an item from the queue
 
-				return;	// no need to pass on to base wndproc
+				return; // no need to pass on to base wndproc
 			}
 
 			base.WndProc(ref m);
@@ -1574,7 +1542,7 @@ namespace XCore
 			{
 				// switch between panes LT-5431.
 				Control focusedControl = MoveToNextPane(!e.Shift);
-				e.Handled = focusedControl != null && focusedControl.ContainsFocus;	// Review: conflicts with TabControls (e.g. InterlinMaster).
+				e.Handled = focusedControl != null && focusedControl.ContainsFocus; // Review: conflicts with TabControls (e.g. InterlinMaster).
 			}
 			// Note: e.Handled needs to be set to true before base.OnKeyDown(e) if we want to avoid further delegation.
 			base.OnKeyDown(e);
@@ -1643,7 +1611,7 @@ namespace XCore
 						m_bar.Panels.Add(m_sizeGrip);
 				}
 				else
-			{
+				{
 					m_bar.Panels.Remove(m_sizeGrip);
 				}
 			}
@@ -1772,7 +1740,7 @@ namespace XCore
 			m_sidebarChoiceGroupCollection = null;
 			m_toolbarsChoiceGroupCollection.Clear();
 			m_toolbarsChoiceGroupCollection = null;
-			m_statusPanels.Clear();		// Refresh refills the status panels.
+			m_statusPanels.Clear();     // Refresh refills the status panels.
 
 			// This is a patch - much like the one below on the mediator where it's checked for null.
 			// If we (I) knew why this was getting called 'n' times and the value was null, I'd have fixed
@@ -1819,8 +1787,6 @@ namespace XCore
 			//m_mediator.AllowCommandsToExecute = true;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		public void SynchronizedOnIdleTime()
 		{
 			CheckDisposed();
@@ -1874,7 +1840,7 @@ namespace XCore
 		{
 			CheckDisposed();
 
-			return new IxCoreColleague[]{this};
+			return new IxCoreColleague[] { this };
 		}
 
 		/// <summary>
@@ -1904,14 +1870,14 @@ namespace XCore
 		{
 			CheckDisposed();
 
-			switch(name)
+			switch (name)
 			{
 				//gentle reader, don't trip up over the unfortunate naming here.
 				//the property where we look for the XmlNode which defines the control is
 				//named currentContentControlParameters. It would perhaps be better named
 				//'currentContentControlConfiguration' or something.
 				case "currentContentControl":
-					using(new WaitCursor(this))
+					using (new WaitCursor(this))
 					{
 						XmlNode controlNode = m_propertyTable.GetValue<XmlNode>("currentContentControlParameters");
 						if (controlNode != null)
@@ -1943,7 +1909,7 @@ namespace XCore
 					break;
 
 				default:
-					if(name.Length > 11 && name.Substring(0, 11) == "StatusPanel")
+					if (name.Length > 11 && name.Substring(0, 11) == "StatusPanel")
 					{
 						string panelName = name.Substring(11);
 						if (m_statusPanels.ContainsKey(panelName))
@@ -2050,7 +2016,7 @@ namespace XCore
 			m_propertyTable.SetPropertyPersistence("SelectedTreeBarNode", false);
 		}
 
-		protected void OnListBarSelect( object sender, EventArgs e)
+		protected void OnListBarSelect(object sender, EventArgs e)
 		{
 			m_propertyTable.SetProperty("SelectedListBarNode",
 				m_recordBar.ListView.SelectedItems.Count == 0 ? null : m_recordBar.ListView.SelectedItems[0],
@@ -2064,7 +2030,7 @@ namespace XCore
 
 			//we really do want both of these handlers disconnected while clearing
 			m_recordBar.TreeView.AfterSelect -= OnTreeBarAfterSelect;
-			m_recordBar.ListView.SelectedIndexChanged -=OnListBarSelect;
+			m_recordBar.ListView.SelectedIndexChanged -= OnListBarSelect;
 			m_recordBar.Clear();
 			m_recordBar.ListView.SelectedIndexChanged += OnListBarSelect;
 			m_recordBar.TreeView.AfterSelect += OnTreeBarAfterSelect;
@@ -2179,7 +2145,7 @@ namespace XCore
 
 		private void SetToolDefaultProperties(XmlNode configurationNode)
 		{
-			m_propertyTable.SetProperty("AllowInsertLinkToFile", true, true);	// default to allowing LinkedFiles links
+			m_propertyTable.SetProperty("AllowInsertLinkToFile", true, true);   // default to allowing LinkedFiles links
 			m_propertyTable.SetProperty("AllowShowNormalFields", true, true);
 
 			if (configurationNode == null)
@@ -2217,7 +2183,6 @@ namespace XCore
 			return oldValue;
 		}
 
-
 		/// <summary>
 		/// given a control configuration node, find the (parent) tool id.
 		/// </summary>
@@ -2226,7 +2191,7 @@ namespace XCore
 		public static string GetToolIdFromControlConfiguration(XmlNode configurationNode)
 		{
 			XmlNode parentToolNode = configurationNode.SelectSingleNode(@"ancestor::tool");
-			string toolId = XmlUtils.GetManditoryAttributeValue(parentToolNode, "value");
+			string toolId = XmlUtils.GetMandatoryAttributeValue(parentToolNode, "value");
 			return toolId;
 		}
 
@@ -2364,7 +2329,7 @@ namespace XCore
 			if (!e.Alt && !e.Control && !IsFunctionKey(e.KeyData))
 				return;
 			// if ((e.KeyData == Keys.Control) || (e.KeyData == Keys.Alt) )//didn't work
-			if ((int)e.KeyData == 131089 )//just ctrl
+			if ((int)e.KeyData == 131089)//just ctrl
 				return;
 
 			//HACK, because without this the CommandBar was not getting keyboard events
@@ -2383,15 +2348,15 @@ namespace XCore
 				Command c = (Command)entry.Value;
 				if (e.KeyData == c.Shortcut)
 				{
-					UIItemDisplayProperties display = CommandChoice.QueryDisplayProperties(m_mediator,c,false, "foo");
+					UIItemDisplayProperties display = CommandChoice.QueryDisplayProperties(m_mediator, c, false, "foo");
 
 					if (!display.Enabled)
-						continue;	// may have multiple commands (in different areas) assigned same shortcut.
+						continue;   // may have multiple commands (in different areas) assigned same shortcut.
 
 					c.InvokeCommand();
 					e.Handled = true;
-					e.SuppressKeyPress = true;	// needed to fix LT-6494.
-					return;			// Handle only the first valid shortcut.  There should be only one!
+					e.SuppressKeyPress = true;  // needed to fix LT-6494.
+					return;         // Handle only the first valid shortcut.  There should be only one!
 				}
 			}
 		}
@@ -2445,7 +2410,7 @@ namespace XCore
 	/// the status bar draw the size grip because the size grip can draw too large at 120dpi
 	/// overlapping adjacent panels.
 	/// </summary>
-	class StatusBarSizeGrip : StatusBarPanel
+	internal class StatusBarSizeGrip : StatusBarPanel
 	{
 		/// <summary>
 		/// Initializes a new instance of the <see cref="StatusBarSizeGrip"/> class.
@@ -2490,6 +2455,12 @@ namespace XCore
 					ControlPaint.DrawSizeGrip(sbdevent.Graphics, sbdevent.BackColor, rect);
 				}
 			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + ". ******");
+			base.Dispose(disposing);
 		}
 	}
 

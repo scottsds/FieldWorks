@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -7,13 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using SIL.Linq;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Infrastructure;
 using XCore;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Framework.DetailControls;
 using SIL.FieldWorks.LexText.Controls;
-using System.Diagnostics.CodeAnalysis;
-using SIL.Utils;
+using SIL.FieldWorks.Common.FwUtils;
 
 namespace SIL.FieldWorks.XWorks.LexEd
 {
@@ -47,8 +46,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true;//we handled this, no need to ask anyone else.
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice and cache are references")]
 		public bool OnPromoteReversalindexEntry(object cmd)
 		{
 			//Command command = (Command) cmd;
@@ -56,7 +53,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			Debug.Assert(slice != null, "No slice was current");
 			if (slice != null)
 			{
-				FdoCache cache = m_dataEntryForm.Cache;
+				LcmCache cache = m_dataEntryForm.Cache;
 				IReversalIndexEntry entry = slice.Object as IReversalIndexEntry;
 				ICmObject newOwner = entry.Owner.Owner;
 				UndoableUnitOfWorkHelper.Do(((Command)cmd).UndoText, ((Command)cmd).RedoText, newOwner,
@@ -92,8 +89,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <param name="commandObject"></param>
 		/// <param name="display"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnDisplayPromoteReversalindexEntry(object commandObject,
 			ref UIItemDisplayProperties display)
 		{
@@ -111,8 +106,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true; //we've handled this
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public bool OnMoveReversalindexEntry(object cmd)
 		{
 			using (var dlg = new ReversalEntryGoDlg())
@@ -127,7 +120,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 					dlg.FilteredReversalEntryHvos.Add(owningEntry.Hvo);
 				dlg.SetHelpTopic("khtpMoveReversalEntry");
 				var wp = new WindowParams {m_btnText = LexEdStrings.ks_MoveEntry, m_title = LexEdStrings.ksMoveRevEntry};
-				var cache = m_propertyTable.GetValue<FdoCache>("cache");
+				var cache = m_propertyTable.GetValue<LcmCache>("cache");
 				dlg.SetDlgInfo(cache, wp, m_mediator, m_propertyTable);
 				if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
 				{
@@ -162,8 +155,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <param name="commandObject"></param>
 		/// <param name="display"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnDisplayMoveReversalindexEntry(object commandObject,
 			ref UIItemDisplayProperties display)
 		{

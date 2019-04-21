@@ -4,13 +4,12 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.Framework.DetailControls;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks.LexEd
@@ -25,11 +24,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 	/// </summary>
 	public class LexEntryMenuHandler : DTMenuHandler
 	{
-		//need a default constructor for dynamic loading
-		public LexEntryMenuHandler()
-		{
-		}
-
 		/// <summary>
 		/// decide whether to display this tree insert Menu Item
 		/// </summary>
@@ -57,7 +51,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 
 			if (!(slice.Object is ILexEntry) && !(slice.ContainingDataTree.Root is ILexEntry))
 				return false;
-			FDO.ILexEntry entry = slice.Object as ILexEntry;
+			ILexEntry entry = slice.Object as ILexEntry;
 			if (entry == null)
 				entry = slice.ContainingDataTree.Root as ILexEntry;
 			if (entry == null || !entry.IsValidObject)
@@ -127,7 +121,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 				return true;
 			if (!(slice.Object is ILexEntry) && !(slice.ContainingDataTree.Root is ILexEntry))
 				return false;
-			FDO.ILexEntry entry = slice.Object as ILexEntry;
+			ILexEntry entry = slice.Object as ILexEntry;
 			if (entry == null)
 				entry = slice.ContainingDataTree.Root as ILexEntry;
 			display.Visible = entry != null;
@@ -182,8 +176,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// </summary>
 		/// <param name="cmd"></param>
 		/// <returns>true to indicate the message was handled</returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public bool OnDataTreeDeleteSense(object cmd)
 		{
 			Command command = (Command)cmd;
@@ -197,8 +189,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true;	//we handled this.
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public bool OnDemoteSense(object cmd)
 		{
 			Command command = (Command) cmd;
@@ -206,7 +196,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			Debug.Assert(slice != null, "No slice was current");
 			if (slice != null)
 			{
-				FdoCache cache = m_dataEntryForm.Cache;
+				LcmCache cache = m_dataEntryForm.Cache;
 				int hvoOwner = slice.Object.Owner.Hvo;
 				int flid = slice.Object.OwningFlid;
 				int chvo = cache.DomainDataByFlid.get_VecSize(hvoOwner, flid);
@@ -267,8 +257,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <param name="commandObject"></param>
 		/// <param name="display"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnDisplayDemoteSense(object commandObject,
 			ref UIItemDisplayProperties display)
 		{
@@ -288,8 +276,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true; //we've handled this
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public bool OnPromoteSense(object cmd)
 		{
 			Command command = (Command) cmd;
@@ -327,8 +313,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <param name="commandObject"></param>
 		/// <param name="display"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnDisplayPromoteSense(object commandObject,
 			ref UIItemDisplayProperties display)
 		{
@@ -345,8 +329,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true; //we've handled this
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnPictureProperties(object cmd)
 		{
 			Slice slice = m_dataEntryForm.CurrentSlice;
@@ -401,8 +383,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			});
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnSwapAllomorphWithLexeme(object cmd)
 		{
 			Slice slice = m_dataEntryForm.CurrentSlice;
@@ -425,7 +405,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		public virtual bool OnSwapLexemeWithAllomorph(object cmd)
 		{
 			ILexEntry entry = m_dataEntryForm.Root as ILexEntry;
-			FdoCache cache = m_dataEntryForm.Cache;
+			LcmCache cache = m_dataEntryForm.Cache;
 			if (entry != null)
 			{
 				Form mainWindow = m_propertyTable.GetValue<Form>("window");
@@ -433,7 +413,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 				{
 					using (SwapLexemeWithAllomorphDlg dlg = new SwapLexemeWithAllomorphDlg())
 					{
-						dlg.SetDlgInfo(cache, m_mediator, m_propertyTable, entry);
+						dlg.SetDlgInfo(cache, m_propertyTable, entry);
 						if (DialogResult.OK == dlg.ShowDialog(mainWindow))
 						{
 							SwapAllomorphWithLexeme(entry, dlg.SelectedAllomorph, cmd as Command);
@@ -490,8 +470,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public virtual bool OnDisplayConvertAllomorph(object commandObject, ref UIItemDisplayProperties display)
 		{
 			Command cmd = commandObject as Command;
@@ -504,8 +482,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			return true;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public bool OnConvertAllomorph(object cmd)
 		{
 			var command = cmd as Command;

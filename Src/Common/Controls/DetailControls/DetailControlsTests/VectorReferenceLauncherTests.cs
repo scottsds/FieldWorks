@@ -13,10 +13,9 @@ using System.Linq;
 
 using NUnit.Framework;
 
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.FDOTests;
-using SIL.CoreImpl;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Core.Text;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
 {
@@ -77,8 +76,8 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		private ILexEntry CreateSimpleEntry(string form, string gloss)
 		{
-			var lexAlt = TsStringUtils.MakeTss(form, m_wsVern);
-			var glossAlt = TsStringUtils.MakeTss(gloss, m_wsAnalysis);
+			var lexAlt = TsStringUtils.MakeString(form, m_wsVern);
+			var glossAlt = TsStringUtils.MakeString(gloss, m_wsAnalysis);
 			var msa = new SandboxGenericMSA { MainPOS = m_noun, MsaType = MsaType.kStem };
 			var leComp = new LexEntryComponents { MSA = msa, MorphType = m_stem };
 			leComp.GlossAlternatives.Add(glossAlt);
@@ -491,6 +490,35 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			Assert.AreEqual(0, primResult.Count,
 				"Modifications of ComponentLexemes, should remove the one PrimaryLexeme.");
 		}
+
+		///--------------------------------------------------------------------------------------
+		/// <summary>
+		/// Tests that Targets returns an empty array if the object is invalid (hvo less than 1).
+		/// </summary>
+		///--------------------------------------------------------------------------------------
+		[Test]
+		public void CheckTargetsReturnsNothingIfObjectIsInvalid()
+		{
+			// Setup test
+			var entry1 = CreateSimpleEntry("form1", "gloss1");
+			var entry2 = CreateSimpleEntry("form2", "gloss2");
+			var secondaryEntry = CreateSimpleEntry("phrase form", "phrase gloss");
+			AddComponentEntryRef(entry1, secondaryEntry);
+			AddComponentEntryRef(entry2, secondaryEntry);
+			var obj = AddPrimaryEntryRef(entry2, secondaryEntry);
+
+			// and initialize launcher
+			MockLauncher.Initialize(Cache, obj, LexEntryRefTags.kflidComponentLexemes,
+				"ComponentLexemesRS", m_wsAnalStr);
+			obj.Delete();
+
+			// SUT
+			Cache.ActionHandlerAccessor.EndUndoTask();
+			var targets = MockLauncher.Targets;
+
+			// Verify results
+			CollectionAssert.IsEmpty(targets, "Should return empty array");
+		}
 	}
 
 	public class MockVectorReferenceLauncher : VectorReferenceLauncher
@@ -519,7 +547,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		#endregion
 
-		public void Initialize(FdoCache cache, ICmObject obj, int flid, string fieldName, string analysisWs)
+		public void Initialize(LcmCache cache, ICmObject obj, int flid, string fieldName, string analysisWs)
 		{
 			Assert.IsNotNull(obj, "Must initialize with an object and flid.");
 			Assert.Greater(flid, 0, "Must initialize with an object and flid.");

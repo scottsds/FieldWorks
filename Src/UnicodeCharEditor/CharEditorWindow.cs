@@ -1,27 +1,20 @@
-// Copyright (c) 2010-2013 SIL International
+// Copyright (c) 2010-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: CharEditorWindow.cs
-// Responsibility: mcconnel
-//
-// <remarks>
-// </remarks>
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Resources;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using System.Xml.Linq;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
-using XCore;
-using System.Collections;
-using System.Resources;
+using SIL.LCModel.Core.Text;
 using SIL.FieldWorks.Common.FwUtils;
-using System.Text;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.UnicodeCharEditor
@@ -129,7 +122,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 
 		private void ReadDataFromUnicodeFiles()
 		{
-			var icuDir = Icu.DefaultDirectory;
+			var icuDir = CustomIcu.DefaultDataDirectory;
 			if (string.IsNullOrEmpty(icuDir))
 				throw new Exception("An error occurred: ICU directory not found. Registry value for ICU not set?");
 			var unicodeDataFilename = Path.Combine(icuDir, "UnicodeDataOverrides.txt");
@@ -343,17 +336,24 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 
 		internal PUACharacter FindCachedIcuEntry(string sCode)
 		{
-			int code;
-			if (Int32.TryParse(sCode, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code))
+			try
 			{
-				PUACharacter charSpec;
-				if (m_dictCustomChars.TryGetValue(code, out charSpec))
-					return charSpec;
-				if (m_dictModifiedChars.TryGetValue(code, out charSpec))
-					return charSpec;
-				charSpec = new PUACharacter(code);
-				if (charSpec.RefreshFromIcu(true))
-					return charSpec; // known character we have no overrides for
+				int code;
+				if (Int32.TryParse(sCode, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code))
+				{
+					PUACharacter charSpec;
+					if (m_dictCustomChars.TryGetValue(code, out charSpec))
+						return charSpec;
+					if (m_dictModifiedChars.TryGetValue(code, out charSpec))
+						return charSpec;
+					charSpec = new PUACharacter(code);
+					if (charSpec.RefreshFromIcu(true))
+						return charSpec; // known character we have no overrides for
+				}
+			}
+			catch (COMException)
+			{
+				// can happen if it's an invalid character
 			}
 			return null;
 		}
@@ -392,7 +392,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		{
 			get
 			{
-				var icuDir = Icu.DefaultDirectory;
+				var icuDir = CustomIcu.DefaultDataDirectory;
 				if (string.IsNullOrEmpty(icuDir))
 					throw new Exception("An error occurred: ICU directory not found. Registry value for ICU not set?");
 				// Must handle registry setting with or without final \  LT-11766.
@@ -408,6 +408,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		{
 			if (m_dictCustomChars.Count == 0)
 				return;
+
 			var customCharsFile = CustomCharsFile;
 			string oldFile = null;
 			if (File.Exists(customCharsFile))
@@ -442,10 +443,13 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 								if (i + 1 < spec.Data.Length)
 									writer.Write(";");
 							}
+
 							writer.WriteLine("\"/>");
 						}
+
 						writer.WriteLine("</PuaDefinitions>");
 					}
+
 					var inst = new PUAInstaller();
 					inst.InstallPUACharacters(customCharsFile);
 					if (!String.IsNullOrEmpty(oldFile) && File.Exists(oldFile))
@@ -454,10 +458,16 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 					m_fDirty = false;
 					return;
 				}
-				catch
+				catch (IcuLockedException)
 				{
-					DialogResult res = MessageBox.Show(Properties.Resources.ksErrorOccurredInstalling,
-						Properties.Resources.ksMsgHeader,
+					var res = MessageBox.Show(Properties.Resources.ksErrorOccurredInstalling,
+						Properties.Resources.ksMsgHeader, MessageBoxButtons.RetryCancel);
+					if (res == DialogResult.Cancel)
+						return;
+				}
+				catch (Exception ex)
+				{
+					var res = MessageBox.Show(ex.Message, Properties.Resources.ksMsgHeader,
 						MessageBoxButtons.RetryCancel);
 					if (res == DialogResult.Cancel)
 						return;

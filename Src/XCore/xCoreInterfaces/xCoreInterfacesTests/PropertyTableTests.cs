@@ -1,11 +1,10 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.IO;
 using NUnit.Framework;
-using SIL.FieldWorks.Test.TestUtils;
 using XCore.Properties;
 
 namespace XCore
@@ -14,7 +13,7 @@ namespace XCore
 	/// PropertyTableTests.
 	/// </summary>
 	[TestFixture]
-	public class PropertyTableTests: BaseTest
+	public class PropertyTableTests
 	{
 		Mediator m_mediator;
 		private PropertyTable m_propertyTable;
@@ -857,6 +856,34 @@ namespace XCore
 			Assert.AreEqual("global_BestStringPropertyC_value", ugpsa, String.Format("Invalid value for {0} {1}.", "best", "BestStringPropertyC"));
 			nullObject = m_propertyTable.GetValue<object>("BestStringPropertyA", PropertyTable.SettingsGroup.LocalSettings);
 			Assert.IsNull(nullObject, String.Format("Invalid value for {0} {1}.", "local", "BestStringPropertyA"));
+		}
+
+		[Test]
+		public void ReadOnlyPropertyTable_GetWithDefaultDoesNotSet()
+		{
+			var noSuchPropName = "No Such Property";
+			var myDefault = "MyDefault";
+			var notDefault = "NotDefault";
+			var roPropTable = new ReadOnlyPropertyTable(m_propertyTable);
+			// Initial conditions
+			Assert.IsNull(m_propertyTable.GetValue<string>(noSuchPropName));
+			var getResult = roPropTable.GetStringProperty(noSuchPropName, myDefault);
+			Assert.IsNull(m_propertyTable.GetValue<string>(noSuchPropName), "Default should not have been set in the property table.");
+			Assert.AreEqual(myDefault, getResult, "Default value not returned.");
+			m_propertyTable.SetProperty(noSuchPropName, notDefault, false);
+			Assert.AreEqual(roPropTable.GetStringProperty(noSuchPropName, myDefault), notDefault, "Default was used instead of value from property table.");
+		}
+
+		[Test]
+		public void ReadOnlyPropertyTable_ReplaceDefaultInitialArea()
+		{
+			const string initialAreaKey = "db$Testlocal$InitialArea";
+			m_propertyTable.SetProperty(initialAreaKey, "lexicon", false);
+			string initialAreaValue = m_propertyTable.GetValue<string>(initialAreaKey);
+			Assert.AreEqual("lexicon", initialAreaValue, "Default value not set.");
+			LoadOriginalSettings();
+			initialAreaValue = m_propertyTable.GetValue<string>(initialAreaKey);
+			Assert.AreEqual("grammar", initialAreaValue, "Default value not replaced.");
 		}
 
 		/// <summary>

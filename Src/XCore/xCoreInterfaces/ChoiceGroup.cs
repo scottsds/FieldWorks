@@ -1,19 +1,12 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ControlGroup.cs
-// Authorship History: John Hatton
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Xml;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using SIL.Utils;
 
 namespace XCore
@@ -21,8 +14,6 @@ namespace XCore
 	/// <summary>
 	/// Summary description for ChoiceGroupCollection.
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification = "variable is a reference; it is owned by parent")]
 	public abstract class ChoiceRelatedClass : ArrayList
 	{
 		protected IUIAdapter m_adapter;
@@ -48,7 +39,7 @@ namespace XCore
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
 			m_configurationNode = configurationNode;
-			m_defaultVisible= XmlUtils.GetOptionalBooleanAttributeValue(m_configurationNode, "defaultVisible", true);
+			m_defaultVisible = XmlUtils.GetOptionalBooleanAttributeValue(m_configurationNode, "defaultVisible", true);
 		}
 
 		protected abstract void Populate();
@@ -126,15 +117,13 @@ namespace XCore
 		}
 		protected void UpdateUI()
 		{
-			Populate ();
+			Populate();
 			m_adapter.CreateUIForChoiceGroupCollection(this);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected override void Populate()
 		{
-			XmlNodeList groups =m_configurationNode.SelectNodes(NodeSelector);
+			XmlNodeList groups = m_configurationNode.SelectNodes(NodeSelector);
 			foreach (XmlNode node in groups)
 			{
 				ChoiceGroup group = new ChoiceGroup(m_mediator, m_propertyTable, m_adapter, node, null);
@@ -405,7 +394,7 @@ namespace XCore
 		}
 		protected void UpdateUI()
 		{
-			Populate ();
+			Populate();
 			m_adapter.CreateUIForChoiceGroup(this);
 		}
 
@@ -464,7 +453,7 @@ namespace XCore
 			Populate();
 		}
 
-		protected void PopulateFromList ()
+		protected void PopulateFromList()
 		{
 			/// Just before this group is displayed, allow the group's contents to be modified by colleagues
 			//if this is a list-populated group.
@@ -527,8 +516,6 @@ namespace XCore
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected void Populate(XmlNode node)
 		{
 			Debug.Assert( node != null);
@@ -655,7 +642,7 @@ namespace XCore
 
 		private string CommandMessage
 		{
-			get { return XmlUtils.GetManditoryAttributeValue(m_configurationNode, "message"); }
+			get { return XmlUtils.GetMandatoryAttributeValue(m_configurationNode, "message"); }
 		}
 
 		/// <summary>

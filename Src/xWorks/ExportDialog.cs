@@ -1,10 +1,10 @@
-// Copyright (c) 2005-2016 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -14,24 +14,27 @@ using System.Windows.Forms;
 using System.Xml;
 using System.Xml.Xsl;
 using Microsoft.Win32;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.Reporting;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.FwUtils.Pathway;
 using SIL.FieldWorks.Common.FXT;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainImpl;
+using SIL.LCModel;
+using SIL.LCModel.DomainImpl;
 using SIL.FieldWorks.FdoUi;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.FieldWorks.Resources;
 using SIL.Lift;
 using SIL.Lift.Validation;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using SIL.Windows.Forms;
 using XCore;
-using ReflectionHelper = SIL.Utils.ReflectionHelper;
+using ReflectionHelper = SIL.LCModel.Utils.ReflectionHelper;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -44,9 +47,9 @@ namespace SIL.FieldWorks.XWorks
 	/// You will typically also need to override the actual Export process, unless it is
 	/// a standard FXT export.
 	/// </summary>
-	public class ExportDialog : Form, IFWDisposable
+	public class ExportDialog : Form
 	{
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		protected Mediator m_mediator;
 		protected XCore.PropertyTable m_propertyTable;
 		private Label label1;
@@ -138,7 +141,7 @@ namespace SIL.FieldWorks.XWorks
 		{
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
-			m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 
 			//
 			// Required for Windows Form Designer support
@@ -496,10 +499,8 @@ namespace SIL.FieldWorks.XWorks
 				m_exportItems.Add(sel);
 			using (EnsureViewInfo())
 			{
-
 				if (!PrepareForExport())
 					return;
-
 				bool fLiftExport = m_exportItems[0].SubItems[2].Text == "lift";
 				string sFileName;
 				string sDirectory;
@@ -716,6 +717,8 @@ namespace SIL.FieldWorks.XWorks
 			using (new WaitCursor(this))
 				using (var progressDlg = new ProgressDialogWithTask(this))
 				{
+				UsageReporter.SendEvent(m_areaOrig + @"Export", @"Export", ft.m_ft.ToString(),
+					string.Format("{0} {1} {2}", ft.m_sDataType, ft.m_sFormat, ft.m_filtered ? "filtered" : "unfiltered"), 0);
 					try
 					{
 						progressDlg.Title = String.Format(xWorksStrings.Exporting0,
@@ -945,8 +948,7 @@ namespace SIL.FieldWorks.XWorks
 			DateTime dtValidate = DateTime.Now;
 			TimeSpan exportDelta = new TimeSpan(dtExport.Ticks - dtStart.Ticks);
 			TimeSpan validateDelta = new TimeSpan(dtValidate.Ticks - dtExport.Ticks);
-			Debug.WriteLine(String.Format("Export time = {0}, Validation time = {1}",
-				exportDelta, validateDelta));
+			Debug.WriteLine("Export time = {0}, Validation time = {1}", exportDelta, validateDelta);
 #endif
 			return null;
 		}
@@ -1066,8 +1068,6 @@ namespace SIL.FieldWorks.XWorks
 		/// Registry key for settings for this Dialog.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "We're returning an object - caller responsible to dispose")]
 		public RegistryKey SettingsKey
 		{
 			get
@@ -1228,7 +1228,7 @@ namespace SIL.FieldWorks.XWorks
 			m_rgFxtTypes.Add(ft);
 			// We can't actually disable a list item, but we can make it look and act like it's
 			// disabled.
-			if (ItemDisabled(ft.m_ft, ft.m_filtered))
+			if (ItemDisabled(ft.m_ft, ft.m_filtered, ft.m_sFormat))
 				item.ForeColor = SystemColors.GrayText;
 		}
 
@@ -1281,15 +1281,17 @@ namespace SIL.FieldWorks.XWorks
 
 		protected virtual bool ItemDisabled(string tag)
 		{
-			return ItemDisabled(m_rgFxtTypes[FxtIndex(tag)].m_ft, m_rgFxtTypes[FxtIndex(tag)].m_filtered);
+			return ItemDisabled(m_rgFxtTypes[FxtIndex(tag)].m_ft, m_rgFxtTypes[FxtIndex(tag)].m_filtered, m_rgFxtTypes[FxtIndex(tag)].m_sFormat);
 		}
 
-		private bool ItemDisabled(FxtTypes ft, bool isFiltered)
+		private bool ItemDisabled(FxtTypes ft, bool isFiltered, string formatType)
 		{
 			//enable unless the type is pathway & pathway is not installed, or if the type is lift and it is filtered, but there is no filter available, or if the filter excludes all items
 			bool fFilterAvailable = DetermineIfFilterIsAvailable();
 			return (ft == FxtTypes.kftPathway && !PathwayUtils.IsPathwayInstalled) ||
-				   (ft == FxtTypes.kftLift && isFiltered && fFilterAvailable);
+				   (ft == FxtTypes.kftLift && isFiltered && fFilterAvailable) ||
+				   (ft == FxtTypes.kftConfigured && (formatType == "htm" || formatType == "sfm")) ||
+				   (ft == FxtTypes.kftReversal && formatType == "sfm");
 		}
 
 		private bool DetermineIfFilterIsAvailable()
@@ -1359,7 +1361,7 @@ namespace SIL.FieldWorks.XWorks
 		/// for testing
 		/// </summary>
 		/// <param name="cache"></param>
-		internal void SetCache(FdoCache cache)
+		internal void SetCache(LcmCache cache)
 		{
 			m_cache = cache;
 		}
@@ -1437,7 +1439,7 @@ namespace SIL.FieldWorks.XWorks
 		/// ------------------------------------------------------------------------------------
 		public class TranslatedListsExporter
 		{
-			FdoCache m_cache;
+			LcmCache m_cache;
 			List<ICmPossibilityList> m_lists;
 			Dictionary<int, string> m_mapWsCode = new Dictionary<int,string>();
 			IProgress m_progress;
@@ -1498,29 +1500,25 @@ namespace SIL.FieldWorks.XWorks
 			/// --------------------------------------------------------------------------------
 			public void ExportTranslatedLists(TextWriter w)
 			{
-				// Writing out TsStrings requires a Stream, not a Writer...
-				var stream = new TextWriterStream(w);
 				w.WriteLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-				w.WriteLine(String.Format("<Lists date=\"{0}\">", DateTime.Now.ToString()));
+				w.WriteLine("<Lists date=\"{0}\">", DateTime.Now);
 				foreach (var list in m_lists)
-					ExportTranslatedList(w, stream, list);
+					ExportTranslatedList(w, list);
 				w.WriteLine("</Lists>");
 			}
 
-			private void ExportTranslatedList(TextWriter w, TextWriterStream stream,
-				ICmPossibilityList list)
+			private void ExportTranslatedList(TextWriter w, ICmPossibilityList list)
 			{
 				string owner = list.Owner.ClassName;
 				string field = m_cache.MetaDataCacheAccessor.GetFieldName(list.OwningFlid);
 				string itemClass = m_cache.MetaDataCacheAccessor.GetClassName(list.ItemClsid);
-				w.WriteLine(String.Format("<List owner=\"{0}\" field=\"{1}\" itemClass=\"{2}\">",
-					owner, field, itemClass));
+				w.WriteLine("<List owner=\"{0}\" field=\"{1}\" itemClass=\"{2}\">", owner, field, itemClass);
 				ExportMultiUnicode(w, list.Name);
 				ExportMultiUnicode(w, list.Abbreviation);
-				ExportMultiString(w, stream, list.Description);
+				ExportMultiString(w, list.Description);
 				w.WriteLine("<Possibilities>");
 				foreach (var item in list.PossibilitiesOS)
-					ExportTranslatedItem(w, stream, item, list.OwningFlid);
+					ExportTranslatedItem(w, item, list.OwningFlid);
 				w.WriteLine("</Possibilities>");
 				w.WriteLine("</List>");
 			}
@@ -1531,49 +1529,45 @@ namespace SIL.FieldWorks.XWorks
 				if (String.IsNullOrEmpty(sEnglish))
 					return;
 				string sField = m_cache.MetaDataCacheAccessor.GetFieldName(mu.Flid);
-				w.WriteLine(String.Format("<{0}>", sField));
-				w.WriteLine(String.Format("<AUni ws=\"en\">{0}</AUni>",
-					XmlUtils.MakeSafeXml(sEnglish)));
+				w.WriteLine("<{0}>", sField);
+				w.WriteLine("<AUni ws=\"en\">{0}</AUni>", XmlUtils.MakeSafeXml(sEnglish));
 				foreach (int ws in m_mapWsCode.Keys)
 				{
 					string sValue = mu.get_String(ws).Text;
 					if (sValue == null)
 						sValue = String.Empty;
 					else
-						sValue = Icu.Normalize(sValue, Icu.UNormalizationMode.UNORM_NFC);
-					w.WriteLine(String.Format("<AUni ws=\"{0}\">{1}</AUni>",
-						m_mapWsCode[ws], XmlUtils.MakeSafeXml(sValue)));
+						sValue = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFC).Normalize(sValue);
+					w.WriteLine("<AUni ws=\"{0}\">{1}</AUni>", m_mapWsCode[ws], XmlUtils.MakeSafeXml(sValue));
 				}
-				w.WriteLine(String.Format("</{0}>", sField));
+				w.WriteLine("</{0}>", sField);
 			}
 
-			private void ExportMultiString(TextWriter w, TextWriterStream stream,
-				IMultiString ms)
+			private void ExportMultiString(TextWriter w, IMultiString ms)
 			{
 				ITsString tssEnglish = ms.get_String(m_wsEn);
 				if (tssEnglish.Length == 0)
 					return;
 				string sField = m_cache.MetaDataCacheAccessor.GetFieldName(ms.Flid);
-				w.WriteLine(String.Format("<{0}>", sField));
-				tssEnglish.WriteAsXml(stream, m_cache.WritingSystemFactory, 0, m_wsEn, false);
+				w.WriteLine("<{0}>", sField);
+				w.WriteLine(TsStringSerializer.SerializeTsStringToXml(tssEnglish, m_cache.WritingSystemFactory, m_wsEn, false));
 				foreach (int ws in m_mapWsCode.Keys)
 				{
 					ITsString tssValue = ms.get_String(ws);
-					tssValue.WriteAsXml(stream, m_cache.WritingSystemFactory, 0, ws, false);
+					w.WriteLine(TsStringSerializer.SerializeTsStringToXml(tssValue, m_cache.WritingSystemFactory, ws, false));
 				}
-				w.WriteLine(String.Format("</{0}>", sField));
+				w.WriteLine("</{0}>", sField);
 			}
 
-			private void ExportTranslatedItem(TextWriter w, TextWriterStream stream,
-				ICmPossibility item, int listFlid)
+			private void ExportTranslatedItem(TextWriter w, ICmPossibility item, int listFlid)
 			{
 				if (m_flidsForGuids.ContainsKey(listFlid))
-					w.WriteLine(String.Format("<{0} guid=\"{1}\">", item.ClassName, item.Guid));
+					w.WriteLine("<{0} guid=\"{1}\">", item.ClassName, item.Guid);
 				else
-					w.WriteLine(String.Format("<{0}>", item.ClassName));
+					w.WriteLine("<{0}>", item.ClassName);
 				ExportMultiUnicode(w, item.Name);
 				ExportMultiUnicode(w, item.Abbreviation);
-				ExportMultiString(w, stream, item.Description);
+				ExportMultiString(w, item.Description);
 				switch (item.ClassID)
 				{
 					case CmLocationTags.kClassId:
@@ -1583,7 +1577,7 @@ namespace SIL.FieldWorks.XWorks
 						ExportPersonFields(w, item as ICmPerson);
 						break;
 					case CmSemanticDomainTags.kClassId:
-						ExportSemanticDomainFields(w, stream, item as ICmSemanticDomain);
+						ExportSemanticDomainFields(w, item as ICmSemanticDomain);
 						break;
 					case LexEntryTypeTags.kClassId:
 						ExportLexEntryTypeFields(w, item as ILexEntryType);
@@ -1602,10 +1596,10 @@ namespace SIL.FieldWorks.XWorks
 				{
 					w.WriteLine("<SubPossibilities>");
 					foreach (var subItem in item.SubPossibilitiesOS)
-						ExportTranslatedItem(w, stream, subItem, listFlid);
+						ExportTranslatedItem(w, subItem, listFlid);
 					w.WriteLine("</SubPossibilities>");
 				}
-				w.WriteLine(String.Format("</{0}>", item.ClassName));
+				w.WriteLine("</{0}>", item.ClassName);
 			}
 
 			private void ExportLocationFields(TextWriter w, ICmLocation item)
@@ -1620,8 +1614,7 @@ namespace SIL.FieldWorks.XWorks
 					ExportMultiUnicode(w, item.Alias);
 			}
 
-			private void ExportSemanticDomainFields(TextWriter w, TextWriterStream stream,
-				ICmSemanticDomain item)
+			private void ExportSemanticDomainFields(TextWriter w, ICmSemanticDomain item)
 			{
 				if (item != null && item.QuestionsOS.Count > 0)
 				{
@@ -1631,7 +1624,7 @@ namespace SIL.FieldWorks.XWorks
 						w.WriteLine("<CmDomainQ>");
 						ExportMultiUnicode(w, domainQ.Question);
 						ExportMultiUnicode(w, domainQ.ExampleWords);
-						ExportMultiString(w, stream, domainQ.ExampleSentences);
+						ExportMultiString(w, domainQ.ExampleSentences);
 						w.WriteLine("</CmDomainQ>");
 					}
 					w.WriteLine("</Questions>");
@@ -1640,25 +1633,26 @@ namespace SIL.FieldWorks.XWorks
 
 			private void ExportLexEntryTypeFields(TextWriter w, ILexEntryType item)
 			{
-				if (item != null)
-					ExportMultiUnicode(w, item.ReverseAbbr);
+				if (item == null)
+					return;
+				ExportMultiUnicode(w, item.ReverseName);
+				ExportMultiUnicode(w, item.ReverseAbbr);
 			}
 
 			private void ExportLexEntryInflTypeFields(TextWriter w, ILexEntryInflType item)
 			{
 				if (item == null)
 					return;
-				ExportMultiUnicode(w, item.ReverseAbbr);
+				ExportLexEntryTypeFields(w, item);
 				ExportMultiUnicode(w, item.GlossAppend);
 			}
 
 			private void ExportLexRefTypeFields(TextWriter w, ILexRefType item)
 			{
-				if (item != null)
-				{
-					ExportMultiUnicode(w, item.ReverseName);
-					ExportMultiUnicode(w, item.ReverseAbbreviation);
-				}
+				if (item == null)
+					return;
+				ExportMultiUnicode(w, item.ReverseName);
+				ExportMultiUnicode(w, item.ReverseAbbreviation);
 			}
 
 			private void ExportPartOfSpeechFields(TextWriter w, IPartOfSpeech item)
@@ -1686,15 +1680,13 @@ namespace SIL.FieldWorks.XWorks
 		/// Perform a Pathway export, bringing up the Pathway configuration dialog, exporting
 		/// one or more XHTML files, and then postprocessing as requested.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "applicationKey is a reference")]
 		private void ProcessPathwayExport()
 		{
 			IApp app = m_propertyTable.GetValue<IApp>("App");
 			string cssDialog = Path.Combine(PathwayUtils.PathwayInstallDirectory, "CssDialog.dll");
 			var sf = ReflectionHelper.CreateObject(cssDialog, "SIL.PublishingSolution.Contents", null);
 			Debug.Assert(sf != null);
-			FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+			LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 			ReflectionHelper.SetProperty(sf, "DatabaseName", cache.ProjectId.Name);
 			bool fContentsExists = SelectOption("ReversalIndexXHTML");
 			if (fContentsExists)
@@ -1812,7 +1804,7 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		private void ProcessWebonaryExport()
 		{
-			FwXWindow.ShowPublishToWebonaryDialog(m_mediator, m_propertyTable);
+			FwXWindow.ShowUploadToWebonaryDialog(m_mediator, m_propertyTable);
 		}
 
 		private bool SelectOption(string exportFormat)
@@ -1904,7 +1896,7 @@ namespace SIL.FieldWorks.XWorks
 			if (!File.Exists(xml))
 				throw new FileNotFoundException();
 			XmlDocument xDoc = new XmlDocument();
-			xDoc.XmlResolver = FileStreamXmlResolver.GetNullResolver();
+			xDoc.XmlResolver = new FileStreamXmlResolver();
 			xDoc.Load(xml);
 		}
 	}

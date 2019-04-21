@@ -5,19 +5,17 @@
 // File: ProjectLocationDlg.cs
 // Responsibility: FW team
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Windows.Forms;
+using Mono.Unix;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 
-#if __MonoCS__
-using Mono.Unix;
-#endif
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -40,7 +38,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			InitializeComponent();
 		}
 
-
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
 		/// Initializes a new instance of the <see cref="ProjectLocationDlg"/> class.
@@ -48,7 +45,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// <param name="cache"></param>
 		/// ------------------------------------------------------------------------------------
-		public ProjectLocationDlg(IHelpTopicProvider helpTopicProvider, FdoCache cache = null)
+		public ProjectLocationDlg(IHelpTopicProvider helpTopicProvider, LcmCache cache = null)
 			: this()
 		{
 			if (cache == null)
@@ -67,8 +64,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			m_tbProjectsFolder.TextChanged += m_tbProjectsFolder_TextChanged;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		private void m_tbProjectsFolder_TextChanged(object sender, EventArgs e)
 		{
 			m_btnOK.Enabled = true;
@@ -90,7 +85,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					string path = m_tbProjectsFolder.Text;
 					// If it contains a settings directory, assume it's a project settings folder...possibly settings for a remote project.
-					if(Directory.Exists(Path.Combine(path, FdoFileHelper.ksConfigurationSettingsDir)))
+					if(Directory.Exists(Path.Combine(path, LcmFileHelper.ksConfigurationSettingsDir)))
 					{
 						m_btnOK.Enabled = false;
 						return;
@@ -125,8 +120,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <summary>
 		/// Verifies that the user has security permissions to write to the given folder, as well as basic file system read and write permissions
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "MiscUtils.IsUnix used to avoid calling missing file access libraries on Mono")]
 		private bool DirectoryIsSuitable(string folderToTest)
 		{
 			// A directory with invalid characters isn't suitable
@@ -146,7 +139,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					return false;
 				pathToTest = Path.GetDirectoryName(pathToTest);
 			}
-			if(!MiscUtils.IsUnix)
+			if (Platform.IsWindows)
 			{
 				// Check the OS file permissions for the folder
 				var accessControlList = Directory.GetAccessControl(pathToTest);
@@ -182,12 +175,11 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				}
 				return readAllowed && writeAllowed;
 			}
-#if __MonoCS__
+
+			// Linux
 			var ufi = new UnixDirectoryInfo(pathToTest);
-			return (ufi.CanAccess(Mono.Unix.Native.AccessModes.R_OK) && ufi.CanAccess(Mono.Unix.Native.AccessModes.W_OK)); // accessible for writing
-#else
-			return false; // unreachable in practice
-#endif
+			return ufi.CanAccess(Mono.Unix.Native.AccessModes.R_OK) &&
+				ufi.CanAccess(Mono.Unix.Native.AccessModes.W_OK); // accessible for writing
 		}
 
 		/// ------------------------------------------------------------------------------------

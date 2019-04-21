@@ -8,19 +8,18 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows.Forms;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Xml;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.FdoUi;
 using XCore;
 using SIL.FieldWorks.Common.Controls;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.XWorks.MorphologyEditor
 {
@@ -43,7 +42,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		#region Data Members
 
 		private IWfiWordform m_wordform;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private Mediator m_mediator;
 		private PropertyTable m_propertyTable;
 		private XmlNode m_configurationNode;
@@ -205,8 +204,6 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 				get { return m_progressBar.Control; }
 			}
 
-			[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-				Justification = "We're returning a reference")]
 			public Form Form
 			{
 				get { return m_progressBar.Control.FindForm(); }

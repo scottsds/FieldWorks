@@ -7,21 +7,21 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Xml;
 using NUnit.Framework;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.Application.ApplicationServices;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.FDOTests;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.Application.ApplicationServices;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.Lift.Validation;
 using SIL.TestUtilities;
@@ -36,8 +36,6 @@ namespace LexTextControlsTests
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
 	[TestFixture]
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="Unit test - Cache gets disposed in TearDown method")]
 	public class LiftExportTests : MemoryOnlyBackendProviderRestoredForEachTestTestBase
 	{
 		private const string kbasePictureOfTestFileName = "Picture of Test";
@@ -453,7 +451,7 @@ namespace LexTextControlsTests
 			"</DomainTypes>" + Environment.NewLine +
 			"</LexDb>" + Environment.NewLine;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private readonly Dictionary<string, ICmSemanticDomain> m_mapSemanticDomains =
 			new Dictionary<string, ICmSemanticDomain>();
 		private readonly Dictionary<string, IPartOfSpeech> m_mapPartsOfSpeech =
@@ -484,9 +482,10 @@ namespace LexTextControlsTests
 			var mockProjectName = "xxyyzProjectFolderForLIFTTest";
 			MockProjectFolder = Path.Combine(Path.GetTempPath(), mockProjectName);
 			var mockProjectPath = Path.Combine(MockProjectFolder, mockProjectName + ".fwdata");
-			m_cache = FdoCache.CreateCacheWithNewBlankLangProj(
-				new TestProjectId(FDOBackendProviderType.kMemoryOnly, mockProjectPath), "en", "fr", "en", new DummyFdoUI(), FwDirectoryFinder.FdoDirectories, new FdoSettings());
-			MockLinkedFilesFolder = Path.Combine(MockProjectFolder, FdoFileHelper.ksLinkedFilesDir);
+			m_cache = LcmCache.CreateCacheWithNewBlankLangProj(
+				new TestProjectId(BackendProviderType.kMemoryOnly, mockProjectPath), "en", "fr", "en", new DummyLcmUI(),
+				FwDirectoryFinder.LcmDirectories, new LcmSettings());
+			MockLinkedFilesFolder = Path.Combine(MockProjectFolder, LcmFileHelper.ksLinkedFilesDir);
 			Directory.CreateDirectory(MockLinkedFilesFolder);
 			//m_cache.LangProject.LinkedFilesRootDir = MockLinkedFilesFolder; this is already the default.
 
@@ -580,6 +579,8 @@ namespace LexTextControlsTests
 		private const string kotherLinkedFileName = "File linked to in defn of test.doc";
 		private const string kcitationFormFileName = "Citation form test.wav";
 		private const string kcustomMultiFileName = "Custom multilingual file.wav";
+		private const string m_CustomPossListReferenced = "CustomCmPossibiltyListReferenced";
+		private const string m_CustomPossListUnreferenced = "CustomCmPossibiltyListNoRef";
 
 		private void AddLexEntries()
 		{
@@ -591,24 +592,31 @@ namespace LexTextControlsTests
 				{
 					m_entryTest = entryFact.Create("test & trouble", "trials & tribulations", msaNoun);
 					m_entryTest.CitationForm.VernacularDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("citation", m_cache.DefaultVernWs);
+						TsStringUtils.MakeString("citation", m_cache.DefaultVernWs);
 					m_entryTest.Bibliography.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("bibliography entry", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("bibliography entry", m_cache.DefaultAnalWs);
+
+					var dialectFactory = Cache.ServiceLocator.GetInstance<ICmPossibilityFactory>();
+					var dialectLabel = dialectFactory.Create(Guid.NewGuid(), Cache.LangProject.LexDbOA.DialectLabelsOA);
+					dialectLabel.Name.set_String(Cache.DefaultAnalWs, "east");
+					dialectLabel.Abbreviation.set_String(Cache.DefaultAnalWs, "e");
+					m_entryTest.DialectLabelsRS.Add(dialectLabel);
+
 					m_entryTest.Comment.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("I like this comment.", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("I like this comment.", m_cache.DefaultAnalWs);
 					m_entryTest.LiteralMeaning.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("Literally we need this.", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("Literally we need this.", m_cache.DefaultAnalWs);
 					m_entryTest.Restrictions.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("There are some restrictions on where this can be used.",
+						TsStringUtils.MakeString("There are some restrictions on where this can be used.",
 														m_cache.DefaultAnalWs);
 					m_entryTest.SummaryDefinition.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("In summary dot dot dot.", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("In summary dot dot dot.", m_cache.DefaultAnalWs);
 					m_entryTest.DoNotPublishInRC.Add(m_mapPublications["Main Dictionary"]);
 
-					var tssDefn = m_cache.TsStrFactory.MakeString("Definition for sense.\x2028Another para of defn", m_cache.DefaultAnalWs);
+					var tssDefn = TsStringUtils.MakeString("Definition for sense.\x2028Another para of defn", m_cache.DefaultAnalWs);
 					var bldr = tssDefn.GetBldr();
 					int len = bldr.Length;
-					var otherFileFolder = Path.Combine(MockLinkedFilesFolder, FdoFileHelper.ksOtherLinkedFilesDir);
+					var otherFileFolder = Path.Combine(MockLinkedFilesFolder, LcmFileHelper.ksOtherLinkedFilesDir);
 					var otherFilePath = Path.Combine(otherFileFolder, kotherLinkedFileName);
 					CreateDummyFile(otherFilePath);
 					var mockStyle = new MockStyle() { Name = "hyperlink" };
@@ -617,25 +625,25 @@ namespace LexTextControlsTests
 					var ls = m_entryTest.SensesOS[0];
 					ls.Definition.AnalysisDefaultWritingSystem = bldr.GetString();
 					ls.AnthroNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("Anthro Note.", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("Anthro Note.", m_cache.DefaultAnalWs);
 					ls.Bibliography.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense Bibliography", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense Bibliography", m_cache.DefaultAnalWs);
 					ls.DiscourseNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense Discoursing away...", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense Discoursing away...", m_cache.DefaultAnalWs);
 					ls.EncyclopedicInfo.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense EncyclopedicInfo", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense EncyclopedicInfo", m_cache.DefaultAnalWs);
 					ls.GeneralNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense GeneralNote", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense GeneralNote", m_cache.DefaultAnalWs);
 					ls.GrammarNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense GrammarNote", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense GrammarNote", m_cache.DefaultAnalWs);
 					ls.PhonologyNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense PhonologyNote", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense PhonologyNote", m_cache.DefaultAnalWs);
 					ls.Restrictions.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense Restrictions", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense Restrictions", m_cache.DefaultAnalWs);
 					ls.SemanticsNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense SemanticsNote", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense SemanticsNote", m_cache.DefaultAnalWs);
 					ls.SocioLinguisticsNote.AnalysisDefaultWritingSystem =
-						m_cache.TsStrFactory.MakeString("sense SocioLinguisticsNote", m_cache.DefaultAnalWs);
+						TsStringUtils.MakeString("sense SocioLinguisticsNote", m_cache.DefaultAnalWs);
 					ls.DoNotPublishInRC.Add(m_mapPublications["School"]);
 					m_entryTest.LiftResidue =
 						"<lift-residue id=\"songanganya & nganga_63698066-52d6-46bd-8438-64ce2a820dc6\" dateCreated=\"2008-04-27T22:41:26Z\" dateModified=\"2007-07-02T17:00:00Z\"></lift-residue>";
@@ -665,7 +673,7 @@ namespace LexTextControlsTests
 					MakePicture(picFolder, m_tempPictureFilePath);
 
 					// See if we can export audio writing system stuff.
-					var audioFolderPath = Path.Combine(MockLinkedFilesFolder, FdoFileHelper.ksMediaDir);
+					var audioFolderPath = Path.Combine(MockLinkedFilesFolder, LcmFileHelper.ksMediaDir);
 					CreateDummyFile(Path.Combine(audioFolderPath, kaudioFileName));
 					m_entryTest.SensesOS[0].Definition.set_String(m_audioWsCode, kaudioFileName);
 
@@ -688,7 +696,7 @@ namespace LexTextControlsTests
 					var pronunFile = m_cache.ServiceLocator.GetInstance<ICmFileFactory>().Create();
 					picFolder.FilesOC.Add(pronunFile); // maybe not quite appropriate, but has to be owned somewhere.
 					media.MediaFileRA = pronunFile;
-					pronunFile.InternalPath = Path.Combine(FdoFileHelper.ksMediaDir, kpronunciationFileName);
+					pronunFile.InternalPath = Path.Combine(LcmFileHelper.ksMediaDir, kpronunciationFileName);
 
 					// We should be able to export LexEntryRefs. BaseForm is a special case.
 					var entryUn = entryFact.Create("un", "not", new SandboxGenericMSA() { MsaType = MsaType.kDeriv });
@@ -705,6 +713,8 @@ namespace LexTextControlsTests
 
 					// one of these is an example and won't be published in either Publication
 					AddCustomFields();
+					// Add a custom list that has no custom field associated with it.
+					AddCustomList(m_CustomPossListUnreferenced);
 				});
 		}
 
@@ -734,7 +744,7 @@ namespace LexTextControlsTests
 			{
 				entryType = m_cache.ServiceLocator.GetInstance<ILexEntryTypeFactory>().Create();
 				m_cache.LangProject.LexDbOA.ComplexEntryTypesOA.PossibilitiesOS.Add(entryType);
-				entryType.Name.AnalysisDefaultWritingSystem = m_cache.TsStrFactory.MakeString(complexFormType, m_cache.DefaultAnalWs);
+				entryType.Name.AnalysisDefaultWritingSystem = TsStringUtils.MakeString(complexFormType, m_cache.DefaultAnalWs);
 			}
 			ler.ComplexEntryTypesRS.Add(entryType);
 			return ler;
@@ -785,7 +795,7 @@ namespace LexTextControlsTests
 			m_customFieldEntryIds.Add(fd.Id);
 			AddCustomFieldMultistringText(fd, m_entryTest.Hvo);
 			m_cache.DomainDataByFlid.SetMultiStringAlt(m_entryTest.Hvo, fd.Id, m_audioWsCode,
-				m_cache.TsStrFactory.MakeString(kcustomMultiFileName, m_audioWsCode));
+				TsStringUtils.MakeString(kcustomMultiFileName, m_audioWsCode));
 
 			//---------------------------------------------------------------------------------------------------
 			fd = MakeCustomField("CustomField3-LexEntry Date", LexEntryTags.kClassId,
@@ -820,7 +830,7 @@ namespace LexTextControlsTests
 			m_sda.Replace(m_entryTest.Hvo, fd.Id, 0, 0, listRefCollectionItems, 3);
 
 			//------------------------------------------------------------------------------------------------------------
-			m_customPossibilityList = AddCustomList();
+			m_customPossibilityList = AddCustomList(m_CustomPossListReferenced);
 			//---------------------------------------------------------------------------------------------------
 			fd = MakeCustomField("CustomField5-LexEntry CmPossibilityCustomList", LexEntryTags.kClassId, WritingSystemServices.kwsAnal,
 				CustomFieldType.ListRefAtomic, m_customPossibilityList.Guid);
@@ -833,12 +843,12 @@ namespace LexTextControlsTests
 			m_customFieldEntryIds.Add(fd.Id);
 			AddCustomFieldMultistringText(fd, m_entryTest.Hvo);
 			m_cache.DomainDataByFlid.SetMultiStringAlt(m_entryTest.Hvo, fd.Id, m_audioWsCode,
-				m_cache.TsStrFactory.MakeString(kcustomMultiFileName, m_audioWsCode));
+				TsStringUtils.MakeString(kcustomMultiFileName, m_audioWsCode));
 		}
 
 		private void AddCustomFieldSimpleString(FieldDescription fd, int ws, int hvo)
 		{
-			var tss = m_cache.TsStrFactory.MakeString(fd.Userlabel + " text.", ws);
+			var tss = TsStringUtils.MakeString(fd.Userlabel + " text.", ws);
 			var bldr = tss.GetBldr();
 			bldr.SetIntPropValues(5, 10, (int)FwTextPropType.ktptWs, (int)FwTextPropVar.ktpvDefault, ws == m_cache.DefaultVernWs ? m_cache.DefaultAnalWs : m_cache.DefaultVernWs);
 			m_cache.DomainDataByFlid.SetString(hvo, fd.Id, bldr.GetString());
@@ -860,12 +870,12 @@ namespace LexTextControlsTests
 			m_cache.DomainDataByFlid.SetInt(m_entryTest.SensesOS[0].Hvo, fd.Id, 5);
 		}
 
-		private ICmPossibilityList AddCustomList()
+		private ICmPossibilityList AddCustomList(string listName)
 		{
 			var ws = m_cache.DefaultUserWs; // get default ws
 			var customPossibilityList = m_cache.ServiceLocator.GetInstance<ICmPossibilityListFactory>().CreateUnowned(
-				"CustomCmPossibiltyList", ws);
-			customPossibilityList.Name.set_String(m_cache.DefaultAnalWs, "CustomCmPossibiltyList");
+				listName, ws);
+			customPossibilityList.Name.set_String(m_cache.DefaultAnalWs, listName);
 
 			// Set various properties of CmPossibilityList
 			customPossibilityList.DisplayOption = (int)PossNameType.kpntName;
@@ -886,8 +896,6 @@ namespace LexTextControlsTests
 			return customPossibilityList;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyCustomLists(XmlDocument xdoc)
 		{
 			var repo = m_cache.ServiceLocator.GetInstance<ICmPossibilityListRepository>();
@@ -898,7 +906,7 @@ namespace LexTextControlsTests
 			foreach (XmlNode range in ranges)
 			{
 				var xrangeId = XmlUtils.GetOptionalAttributeValue(range, "id");
-				if (xrangeId == "CustomCmPossibiltyList")
+				if (xrangeId == m_CustomPossListReferenced)
 				{
 					xcustomListRef = range;
 					break;
@@ -934,7 +942,7 @@ namespace LexTextControlsTests
 			var exampleSentence = exampleFact.Create();
 			m_entryTest.SensesOS[0].ExamplesOS.Add(exampleSentence);
 			exampleSentence.Example.VernacularDefaultWritingSystem =
-				m_cache.TsStrFactory.MakeString("sense ExampleSentence", m_cache.DefaultVernWs);
+				TsStringUtils.MakeString("sense ExampleSentence", m_cache.DefaultVernWs);
 
 			// Use this opportunity to also test LexExampleSentence Publish settings export
 			exampleSentence.DoNotPublishInRC.Add(m_cache.LangProject.LexDbOA.PublicationTypesOA.PossibilitiesOS[0]);
@@ -956,7 +964,7 @@ namespace LexTextControlsTests
 		private void AddCustomFieldMultistringText(FieldDescription fd, int hvo)
 		{
 			ITsString tss;
-			tss = m_cache.TsStrFactory.MakeString("MultiString Analysis ws string", m_cache.DefaultAnalWs);
+			tss = TsStringUtils.MakeString("MultiString Analysis ws string", m_cache.DefaultAnalWs);
 			if (fd.Type == CellarPropertyType.MultiString)
 			{
 				// A decent test of a multi-string property (as opposed to Multi-Unicode) requires more than one run.
@@ -966,7 +974,7 @@ namespace LexTextControlsTests
 			}
 			m_cache.DomainDataByFlid.SetMultiStringAlt(hvo, fd.Id, m_cache.DefaultAnalWs, tss);
 
-			tss = m_cache.TsStrFactory.MakeString("MultiString Vernacular ws string", m_cache.DefaultVernWs);
+			tss = TsStringUtils.MakeString("MultiString Vernacular ws string", m_cache.DefaultVernWs);
 			m_cache.DomainDataByFlid.SetMultiStringAlt(hvo, fd.Id, m_cache.DefaultVernWs, tss);
 		}
 
@@ -979,7 +987,7 @@ namespace LexTextControlsTests
 			var para = stText.AddNewTextPara("normal");
 			var seg = m_cache.ServiceLocator.GetInstance<ISegmentFactory>().Create();
 			para.Contents =
-				m_cache.TsStrFactory.MakeString("MultiString Analysis ws string & ampersand check", m_cache.DefaultAnalWs);
+				TsStringUtils.MakeString("MultiString Analysis ws string & ampersand check", m_cache.DefaultAnalWs);
 			m_cache.DomainDataByFlid.SetObjProp(hvo, fd.Id, stText.Hvo);
 		}
 
@@ -989,7 +997,7 @@ namespace LexTextControlsTests
 			var allomorph = m_cache.ServiceLocator.GetInstance<IMoStemAllomorphFactory>().Create();
 			m_entryTest.AlternateFormsOS.Add(allomorph);
 			var hvo = m_entryTest.AlternateFormsOS[0].Hvo;
-			var tss = m_cache.TsStrFactory.MakeString("Allomorph of LexEntry", m_cache.DefaultVernWs);
+			var tss = TsStringUtils.MakeString("Allomorph of LexEntry", m_cache.DefaultVernWs);
 			m_cache.DomainDataByFlid.SetMultiStringAlt(hvo, MoFormTags.kflidForm, m_cache.DefaultVernWs, tss);
 
 			//Add String custom field to Allomorph
@@ -1112,7 +1120,7 @@ namespace LexTextControlsTests
 				pronunciation.MediaFilesOS.Add(media);
 				m_cache.LangProject.PicturesOC.First().FilesOC.Add(pronunFile); // maybe not quite appropriate, but has to be owned somewhere.
 				media.MediaFileRA = pronunFile;
-				var internalPath = Path.Combine(FdoFileHelper.ksMediaDir, kpronunciationFileName);
+				var internalPath = Path.Combine(LcmFileHelper.ksMediaDir, kpronunciationFileName);
 				pronunFile.InternalPath = internalPath;
 				var exporter = new LiftExporter(m_cache);
 				var xdoc = new XmlDocument();
@@ -1149,37 +1157,53 @@ namespace LexTextControlsTests
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyExportRanges(XmlDocument xdoc)
 		{
 			var repo = m_cache.ServiceLocator.GetInstance<ICmPossibilityListRepository>();
-			var customList = repo.GetObject(m_customListsGuids[0]);
-			var item1 = customList.FindOrCreatePossibility("list item 1", m_cache.DefaultAnalWs);
-			var item2 = customList.FindOrCreatePossibility("list item 2", m_cache.DefaultAnalWs);
+			var referencedCustomList = repo.GetObject(m_customListsGuids[0]);
+			var item1 = referencedCustomList.FindOrCreatePossibility("list item 1", m_cache.DefaultAnalWs);
+			var item2 = referencedCustomList.FindOrCreatePossibility("list item 2", m_cache.DefaultAnalWs);
+			var unreferencedCustomList = repo.GetObject(m_customListsGuids[1]);
+			var unRefeditem1 = unreferencedCustomList.FindOrCreatePossibility("list item 1", m_cache.DefaultAnalWs);
+			var unrefedItem2 = unreferencedCustomList.FindOrCreatePossibility("list item 2", m_cache.DefaultAnalWs);
 
 			var ranges = xdoc.SelectNodes("//range");
 			Assert.IsNotNull(ranges);
-			Assert.AreEqual(12, ranges.Count);
-			XmlNode xcustomListRef = null;
+			Assert.AreEqual(14, ranges.Count);
+			XmlNode referencedCustomFieldList = null;
+			XmlNode unreferencedCustomFieldList = null;
 			foreach (XmlNode range in ranges)
 			{
 				var xrangeId = XmlUtils.GetOptionalAttributeValue(range, "id");
-				if (xrangeId == "CustomCmPossibiltyList")
+				if (xrangeId == m_CustomPossListReferenced)
 				{
-					xcustomListRef = range;
-					break;
+					referencedCustomFieldList = range;
+				}
+				if (xrangeId == m_CustomPossListUnreferenced)
+				{
+					unreferencedCustomFieldList = range;
 				}
 			}
-			Assert.IsNotNull(xcustomListRef);
-			var xcustomListId = XmlUtils.GetOptionalAttributeValue(xcustomListRef, "id");
-			Assert.AreEqual(customList.Name.BestAnalysisVernacularAlternative.Text, xcustomListId);
+			Assert.IsNotNull(referencedCustomFieldList, "Custom possibility list referenced by a custom field not exported");
+			Assert.IsNotNull(unreferencedCustomFieldList, "Custom possibility list that is not referred to by a custom field not exported");
+			var xcustomListId = XmlUtils.GetOptionalAttributeValue(referencedCustomFieldList, "id");
+			Assert.AreEqual(referencedCustomList.Name.BestAnalysisVernacularAlternative.Text, xcustomListId);
+			xcustomListId = XmlUtils.GetOptionalAttributeValue(unreferencedCustomFieldList, "id");
+			Assert.AreEqual(unreferencedCustomList.Name.BestAnalysisVernacularAlternative.Text, xcustomListId);
 
-			var rangeElements = xcustomListRef.ChildNodes;
+			// verify referenced custom list items
+			var rangeElements = referencedCustomFieldList.ChildNodes;
 			Assert.IsNotNull(rangeElements);
 			Assert.IsTrue(rangeElements.Count == 2);
 			VerifyExportRangeElement(rangeElements[0], item1);
 			VerifyExportRangeElement(rangeElements[1], item2);
+
+			// verify unreferenced custom list items
+			rangeElements = unreferencedCustomFieldList.ChildNodes;
+			Assert.IsNotNull(rangeElements);
+			Assert.IsTrue(rangeElements.Count == 2);
+			VerifyExportRangeElement(rangeElements[0], unRefeditem1);
+			VerifyExportRangeElement(rangeElements[1], unrefedItem2);
 
 			//Verify Academic Domains were output
 			var acaDomList = m_cache.LangProject.LexDbOA.DomainTypesOA;
@@ -1252,8 +1276,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(item1.Name.BestAnalysisVernacularAlternative.Text, rangeElementFormText);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyExport(XmlDocument xdoc)
 		{
 			var repoEntry = m_cache.ServiceLocator.GetInstance<ILexEntryRepository>();
@@ -1301,7 +1323,7 @@ namespace LexTextControlsTests
 				Assert.IsNotNull(traitlist);
 				if (entry == m_entryTest)
 				{
-					Assert.AreEqual(8, traitlist.Count);
+					Assert.AreEqual(9, traitlist.Count);
 					VerifyPublishInExport(xentry);
 				}
 				else
@@ -1350,8 +1372,6 @@ namespace LexTextControlsTests
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyEmptyPublishIn(XmlNode xentry)
 		{
 			var dnpiXpath = "trait[@name = 'do-not-publish-in']";
@@ -1363,8 +1383,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(0, dnpiNodes.Count, "Should not contain any sense-level 'do-not-publish-in' nodes!");
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyPublishInExport(XmlNode xentry)
 		{
 			var dnpiXpath = "trait[@name = 'do-not-publish-in']";
@@ -1411,8 +1429,6 @@ namespace LexTextControlsTests
 		/// </relation>
 		/// </code>
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyLexEntryRefs(ILexEntry entryUnbelieving, XmlNode xentry)
 		{
 			var relations = xentry.SelectNodes("relation");
@@ -1423,8 +1439,6 @@ namespace LexTextControlsTests
 			VerifyRelation(relations[3], "BaseForm", "BaseForm", true, "believe");
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyRelation(XmlNode relation, string type, string complexFormType, bool isPrimary, string target)
 		{
 			Assert.That(relation.Attributes["type"].Value, Is.EqualTo(type));
@@ -1445,8 +1459,6 @@ namespace LexTextControlsTests
 			Assert.That(relatedEntry.LexemeFormOA.Form.VernacularDefaultWritingSystem.Text, Is.EqualTo(target));
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyEntryExtraStuff(ILexEntry entry, XmlNode xentry)
 		{
 			var citations = xentry.SelectNodes("citation");
@@ -1479,20 +1491,24 @@ namespace LexTextControlsTests
 
 			var xpronun = xentry.SelectNodes("pronunciation");
 			Assert.That(xpronun, Has.Count.EqualTo(1));
+
+			var dialectLabelXpath = "trait[@name = 'dialect-labels']";
+			var dialectLabelNodes = xentry.SelectNodes(dialectLabelXpath);
+			Assert.AreEqual(1, dialectLabelNodes.Count, "Should contain dialect label");
+			Assert.AreEqual("east", XmlUtils.GetAttributeValue(dialectLabelNodes[0], "value"), "Wrong dialect label!");
+
 			var xmedia = xpronun[0].SelectNodes("media");
 			Assert.That(xmedia, Has.Count.EqualTo(1));
 			var hrefMedia = xmedia[0].Attributes["href"];
 			Assert.That(hrefMedia.Value, Is.EqualTo(kpronunciationFileName));
 			VerifyAudio(kpronunciationFileName);
 			var xlf = xentry.SelectSingleNode("lexical-unit");
-			VerifyMultiStringAlt(xlf, m_audioWsCode, 2, m_cache.TsStrFactory.MakeString(klexemeFormFileName, m_audioWsCode));
+			VerifyMultiStringAlt(xlf, m_audioWsCode, 2, TsStringUtils.MakeString(klexemeFormFileName, m_audioWsCode));
 			VerifyAudio(klexemeFormFileName);
-			VerifyMultiStringAlt(citations[0], m_audioWsCode, 2, m_cache.TsStrFactory.MakeString(kcitationFormFileName, m_audioWsCode));
+			VerifyMultiStringAlt(citations[0], m_audioWsCode, 2, TsStringUtils.MakeString(kcitationFormFileName, m_audioWsCode));
 			VerifyAudio(kcitationFormFileName);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyEntryCustomFields(XmlNode xentry, ILexEntry entry)
 		{
 			var xfields = xentry.SelectNodes("field");
@@ -1578,8 +1594,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(liftGenDate.Day, genDate.Day);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyAllomorphCustomFields(XmlNode xentry, ILexEntry entry)
 		{
 			//<variant>
@@ -1608,15 +1622,13 @@ namespace LexTextControlsTests
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyExtraSenseStuff(ILexSense sense, XmlNode xsense)
 		{
 			var xdefs = xsense.SelectNodes("definition");
 			Assert.IsNotNull(xdefs);
 			Assert.AreEqual(1, xdefs.Count);
 			VerifyMultiStringAlt(xdefs[0], m_cache.DefaultAnalWs, 2, sense.Definition.AnalysisDefaultWritingSystem);
-			VerifyMultiStringAlt(xdefs[0], m_audioWsCode, 2, m_cache.TsStrFactory.MakeString(kaudioFileName, m_audioWsCode));
+			VerifyMultiStringAlt(xdefs[0], m_audioWsCode, 2, TsStringUtils.MakeString(kaudioFileName, m_audioWsCode));
 
 			// Check the hyperlink
 			var defnSpan = xdefs[0].SelectSingleNode("form/text/span");
@@ -1669,8 +1681,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(exists, File.Exists(filePath), failureMsg);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyPictures(XmlNode xsense, ILexSense sense)
 		{
 			var pictureNodes = xsense.SelectNodes("illustration");
@@ -1706,8 +1716,6 @@ namespace LexTextControlsTests
 			Assert.IsTrue(File.Exists(Path.Combine(liftPicsFolder, fourthPicName)));
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifySenseCustomFields(XmlNode xsense, ILexSense sense)
 		{
 			var xfields = xsense.SelectNodes("field");
@@ -1768,8 +1776,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(sValue, intVal.ToString());
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyExampleSentenceCustomFields(XmlNode xsense, ILexSense sense)
 		{
 			//<example>
@@ -1813,8 +1819,6 @@ namespace LexTextControlsTests
 		private bool DontExpectNewlinesCorrected;
 		private string m_tempPictureFilePath;
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyTsString(XmlNode xitem, int wsItem, ITsString tssText)
 		{
 			var xforms = xitem.SelectNodes("form");
@@ -1825,8 +1829,6 @@ namespace LexTextControlsTests
 			VerifyForm(xforms[0], tssText, sLang);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyMultiStringAlt(XmlNode xitem, int wsItem, int wsCount, ITsString tssText)
 		{
 			var xforms = xitem.SelectNodes("form");
@@ -1845,8 +1847,6 @@ namespace LexTextControlsTests
 			Assert.Fail("expected Ws alternative not found");
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyForm(XmlNode form, ITsString tssText, string baseLang)
 		{
 			var sText = form.FirstChild.InnerText;
@@ -1882,8 +1882,6 @@ namespace LexTextControlsTests
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyMultiStringAnalVern(XmlNode xitem, ITsMultiString tssMultiString, bool expectCustom)
 		{
 			var xforms = xitem.SelectNodes("form");
@@ -1968,7 +1966,7 @@ namespace LexTextControlsTests
 			var paraFact = m_cache.ServiceLocator.GetInstance<IStTxtParaFactory>();
 			var para1 = paraFact.Create();
 			text.ParagraphsOS.Add(para1);
-			ITsIncStrBldr tisb = TsIncStrBldrClass.Create();
+			ITsIncStrBldr tisb = TsStringUtils.MakeIncStrBldr();
 			tisb.SetIntPropValues((int) FwTextPropType.ktptWs, 0, m_cache.DefaultAnalWs);
 			tisb.Append("This is a ");
 			tisb.SetStrPropValue((int) FwTextPropType.ktptNamedStyle, "Emphasized Text");
@@ -1991,7 +1989,7 @@ namespace LexTextControlsTests
 			var para3 = paraFact.Create();
 			text.ParagraphsOS.Add(para3);
 			para3.StyleName = "Canadian Bacon";
-			para3.Contents = m_cache.TsStrFactory.MakeString("CiCi pizza is cheap, but not really gourmet when it comes to pizza.", m_cache.DefaultAnalWs);
+			para3.Contents = TsStringUtils.MakeString("CiCi pizza is cheap, but not really gourmet when it comes to pizza.", m_cache.DefaultAnalWs);
 
 			//LT-11639   we need to create second StText on another entry and make it empty
 			//to ensure that if it is empty then we do not export it.
@@ -2005,8 +2003,6 @@ namespace LexTextControlsTests
 			text.ParagraphsOS.Add(paraInEntryThis2);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyCustomStText(XmlDocument xdoc)
 		{
 			var repoEntry = m_cache.ServiceLocator.GetInstance<ILexEntryRepository>();
@@ -2030,8 +2026,6 @@ namespace LexTextControlsTests
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyCustomStTextForEntryThisAndAllOthers(XmlNode xentry)
 		{
 			var xcustoms = xentry.SelectNodes("field[@type=\"Long Text\"]");
@@ -2039,8 +2033,6 @@ namespace LexTextControlsTests
 			Assert.AreEqual(0, xcustoms.Count, "We should have zero \"Long Text\" fields for this entry.");
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void VerifyCustomStTextForEntryTest(XmlNode xentry)
 		{
 			var xcustoms = xentry.SelectNodes("field[@type=\"Long Text\"]");
@@ -2176,8 +2168,6 @@ namespace LexTextControlsTests
 		}
 	}
 
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="Unit test - Cache isn't used here")]
 	class MockStyle : IStStyle
 	{
 		public ICmObjectId Id { get; private set; }
@@ -2199,7 +2189,7 @@ namespace LexTextControlsTests
 			throw new NotImplementedException();
 		}
 
-		public IFdoServiceLocator Services { get; private set; }
+		public ILcmServiceLocator Services { get; private set; }
 		public ICmObject OwnerOfClass(int clsid)
 		{
 			throw new NotImplementedException();
@@ -2253,7 +2243,7 @@ namespace LexTextControlsTests
 		}
 
 		public bool IsValidObject { get; private set; }
-		public FdoCache Cache { get; private set; }
+		public LcmCache Cache { get; private set; }
 		public void MergeObject(ICmObject objSrc)
 		{
 			throw new NotImplementedException();

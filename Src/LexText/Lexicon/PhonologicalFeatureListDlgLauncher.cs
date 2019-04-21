@@ -3,11 +3,9 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.Framework.DetailControls;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
 using XCore;
 using PhonologicalFeatureChooserDlg = SIL.FieldWorks.LexText.Controls.PhonologicalFeatureChooserDlg;
 
@@ -27,13 +25,13 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <summary>
 		/// Initialize the launcher.
 		/// </summary>
-		public override void Initialize(FdoCache cache, ICmObject obj, int flid, string fieldName,
+		public override void Initialize(LcmCache cache, ICmObject obj, int flid, string fieldName,
 			IPersistenceProvider persistProvider, Mediator mediator, PropertyTable propertyTable, string displayNameProperty, string displayWs)
 		{
 			CheckDisposed();
 
 			base.Initialize(cache, obj, flid, fieldName, persistProvider, mediator, propertyTable, displayNameProperty, displayWs);
-			m_PhonologicalFeatureListDlgLauncherView.Init(m_propertyTable.GetValue<FdoCache>("cache"), obj as IFsFeatStruc);
+			m_PhonologicalFeatureListDlgLauncherView.Init(m_propertyTable.GetValue<LcmCache>("cache"), obj as IFsFeatStruc);
 			if (Slice.Object.ClassID == PhPhonemeTags.kClassId)
 				m_PhonologicalFeatureListDlgLauncherView.Phoneme = Slice.Object as IPhPhoneme;
 		}
@@ -41,8 +39,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <summary>
 		/// Handle launching of the phonological feature editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		protected override void HandleChooser()
 		{
 			// grammar/phonemes/phonological features/[...] (click chooser button)

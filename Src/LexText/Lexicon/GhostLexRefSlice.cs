@@ -3,16 +3,16 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.Framework.DetailControls;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FwCoreDlgs;
 using SIL.FieldWorks.LexText.Controls;
+using SIL.PlatformUtilities;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks.LexEd
@@ -57,8 +57,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			BackColor = System.Drawing.SystemColors.Window;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		protected override void HandleChooser()
 		{
 			Debug.Assert(m_obj.ClassID == LexEntryTags.kClassId);
@@ -101,23 +99,30 @@ namespace SIL.FieldWorks.XWorks.LexEd
 				{
 					ILexEntry ent = m_obj as ILexEntry;
 
+					// It IS a ghost slice after all; it shouldn't already have any of whatever we're about to add.
+					Debug.Assert(!(fForVariant ? ent.VariantEntryRefs.Any() : ent.ComplexFormEntryRefs.Any()));
+					if (fForVariant ? ent.VariantEntryRefs.Any() : ent.ComplexFormEntryRefs.Any())
+						return;
+
 					// Adapted from part of DtMenuHandler.AddNewLexEntryRef.
 					ILexEntryRef ler = ent.Services.GetInstance<ILexEntryRefFactory>().Create();
 					ent.EntryRefsOS.Add(ler);
 					if (fForVariant)
 					{
-						// The slice this is part of should only be displayed for lex entries with no VariantEntryRefs.
-						Debug.Assert(ent.VariantEntryRefs.Count() == 0);
-						ler.VariantEntryTypesRS.Add(ent.Cache.LangProject.LexDbOA.VariantEntryTypesOA.PossibilitiesOS[0] as ILexEntryType);
+						const string unspecVariantEntryTypeGuid = "3942addb-99fd-43e9-ab7d-99025ceb0d4e";
+						var type = ent.Cache.LangProject.LexDbOA.VariantEntryTypesOA.PossibilitiesOS
+							.First(lrt => lrt.Guid.ToString() == unspecVariantEntryTypeGuid) as ILexEntryType;
+						ler.VariantEntryTypesRS.Add(type);
 						ler.RefType = LexEntryRefTags.krtVariant;
 						ler.HideMinorEntry = 0;
 					}
 					else
 					{
-						// The slice this is part of should only be displayed for lex entries with no ComplexEntryRefs.
-						Debug.Assert(ent.ComplexFormEntryRefs.Count() == 0);
-						//ler.ComplexEntryTypesRS.Append(ent.Cache.LangProject.LexDbOA.ComplexEntryTypesOA.PossibilitiesOS[0].Hvo);
 						ler.RefType = LexEntryRefTags.krtComplexForm;
+						const string unspecComplexFormEntryTypeGuid = "fec038ed-6a8c-4fa5-bc96-a4f515a98c50";
+						var type = ent.Cache.LangProject.LexDbOA.ComplexEntryTypesOA.PossibilitiesOS
+							.First(lrt => lrt.Guid.ToString() == unspecComplexFormEntryTypeGuid) as ILexEntryType;
+						ler.ComplexEntryTypesRS.Add(type);
 						ler.HideMinorEntry = 0; // LT-10928
 						// Logic similar to this is in EntrySequenceReferenceLauncher.AddNewObjectsToProperty()
 						// (when LER already exists so slice is not ghost)
@@ -125,7 +130,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 						// Since it's a new LER, we can't know it to be a derivative, so by default it is visible.
 						// but do NOT do that here, it's now built into the process of adding it to PrimaryLexemes,
 						// and we don't want to do it twice.
-						// ler.ShowComplexFormsInRS.Add(newObj);
 						ent.ChangeRootToStem();
 					}
 					// Must do this AFTER setting the RefType (so dependent virtual properties can be updated properly)
@@ -134,21 +138,19 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			}
 			catch (ArgumentException)
 			{
-				MessageBoxes.ReportLexEntryCircularReference((ILexEntry)m_obj, newObj, true);
+				MessageBoxes.ReportLexEntryCircularReference(m_obj, newObj, true);
 			}
 		}
 
-#if __MonoCS__
 		/// <summary>
 		/// Activate menu only if Alt key is being pressed.  See FWNX-1353.
 		/// </summary>
 		/// <remarks>TODO: Getting here without the Alt key may be considered a Mono bug.</remarks>
 		protected override bool ProcessDialogChar(char charCode)
 		{
-			if (Control.ModifierKeys == Keys.Alt)
+			if (!Platform.IsMono || Control.ModifierKeys == Keys.Alt)
 				return base.ProcessDialogChar(charCode);
 			return false;
 		}
-#endif
 	}
 }

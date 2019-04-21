@@ -6,22 +6,22 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexText.Controls;
-using SIL.Utils;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Filters;
 using SIL.FieldWorks.FwCoreDlgs;
 using SIL.FieldWorks.XWorks;
@@ -351,7 +351,7 @@ namespace SIL.FieldWorks.IText
 			/// <summary>
 			/// Constructor.
 			/// </summary>
-			public POSComboController(TreeCombo treeCombo, FdoCache cache, ICmPossibilityList list, int ws, bool useAbbr, Mediator mediator, PropertyTable propertyTable, Form parent) :
+			public POSComboController(TreeCombo treeCombo, LcmCache cache, ICmPossibilityList list, int ws, bool useAbbr, Mediator mediator, PropertyTable propertyTable, Form parent) :
 				base(treeCombo, cache, list, ws, useAbbr, mediator, propertyTable, parent)
 			{
 				Sorted = true;
@@ -516,8 +516,6 @@ namespace SIL.FieldWorks.IText
 		/// This method will fill in the DropDownList which replaces the Textbox for searching on certain lines
 		/// </summary>
 		/// <param name="line"></param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="m_pOSPopupTreeManager gets disposed in Dispose()")]
 		private void FillSearchComboList(ConcordanceLines line)
 		{
 			if(m_pOSPopupTreeManager != null)
@@ -564,8 +562,7 @@ namespace SIL.FieldWorks.IText
 				return;
 			}
 			m_tbSearchText.WritingSystemCode = ws.Handle;
-			ITsStrFactory tsf = TsStrFactoryClass.Create();
-			m_tbSearchText.Tss = tsf.MakeString(m_tbSearchText.Text.Trim(), ws.Handle);
+			m_tbSearchText.Tss = TsStringUtils.MakeString(m_tbSearchText.Text.Trim(), ws.Handle);
 		}
 
 		private void m_rbtnUseRegExp_CheckedChanged(object sender, EventArgs e)
@@ -687,6 +684,24 @@ namespace SIL.FieldWorks.IText
 			switch (clid)
 			{
 				case WfiGlossTags.kClassId:
+					{
+						var targetGloss = (IWfiGloss) target;
+						analyses.Add(targetGloss);
+						foreach (IWfiGloss gloss in m_cache.ServiceLocator.GetInstance<IWfiGlossRepository>().AllInstances().Where(g => g != targetGloss))
+						{
+							foreach (int ws in targetGloss.Form.AvailableWritingSystemIds)
+							{
+								ITsString targetTss = targetGloss.Form.get_String(ws);
+								ITsString tss = gloss.Form.get_String(ws);
+								if (targetTss.Equals(tss))
+								{
+									analyses.Add(gloss);
+									break;
+								}
+							}
+						}
+						return GetOccurrencesOfAnalyses(analyses);
+					}
 				case WfiAnalysisTags.kClassId:
 					{
 						analyses.Add(m_cache.ServiceLocator.GetObject(m_hvoMatch) as IAnalysis);
@@ -834,7 +849,7 @@ namespace SIL.FieldWorks.IText
 				if (tss == null)
 				{
 					ws = m_cache.DefaultVernWs;
-					tss = m_cache.TsStrFactory.MakeString("", ws);
+					tss = TsStringUtils.EmptyString(ws);
 				}
 				SetDefaultVisibilityOfItems(true, String.Empty);
 				m_fObjectConcorded = false;
@@ -1249,7 +1264,7 @@ namespace SIL.FieldWorks.IText
 				// every nondiacritic character in the string.
 				for (int ich = sb.Length - 1; ich > 0; --ich)
 				{
-					if (Icu.IsDiacritic(sb[ich]))
+					if (Icu.Character.IsDiacritic(sb[ich]))
 						sb[ich] = '%';
 					else
 						sb.Insert(ich, '%');
@@ -1701,7 +1716,7 @@ namespace SIL.FieldWorks.IText
 	{
 		internal ConcordanceControlBase OwningControl { get; set; }
 
-		public override void Init(FdoCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
+		public override void Init(LcmCache cache, Mediator mediator, PropertyTable propertyTable, XmlNode recordListNode)
 		{
 			base.Init(cache, mediator, propertyTable, recordListNode);
 			m_owningObject = cache.LangProject;

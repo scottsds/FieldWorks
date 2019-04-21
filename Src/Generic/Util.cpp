@@ -349,7 +349,7 @@ template<typename XChar>
 }
 
 
-#if WIN32
+#if defined(_WIN32) || defined(_M_X64)
 /*----------------------------------------------------------------------------------------------
 	Take a string and resolve it to a full path name.
 	Example: d:\work\src\test\test.exe\..\..\test.kb is output as d:\work\src\test.kb
@@ -397,7 +397,7 @@ void CopyBytes(IStream * pstrmSrc, IStream * pstrmDst, int cb)
 /*----------------------------------------------------------------------------------------------
 	Fill bytes in the stream.
 ----------------------------------------------------------------------------------------------*/
-void FillBytes(IStream * pstrm, byte b, int cb)
+void FillBytes(IStream * pstrm, byte b, SSIZE_T cb)
 {
 	AssertPtr(pstrm);
 
@@ -407,7 +407,7 @@ void FillBytes(IStream * pstrm, byte b, int cb)
 	FillBytes(rgb, b, Min(cb, isizeof(rgb)));
 	while (cb > 0)
 	{
-		cbT = Min(cb, isizeof(rgb));
+		cbT = (int)Min(cb, isizeof(rgb));
 		WriteBuf(pstrm, rgb, cbT);
 		cb -= cbT;
 	}
@@ -572,54 +572,59 @@ static void RegisterTypeLibrary(int rid, BOOL fRegister)
 }
 
 
-static BOOL CALLBACK RegisterTypeLibProc(HMODULE hmod, LPCTSTR pszType,
-	LPTSTR pszName, LONG lParam)
+static BOOL CALLBACK RegisterTypeLibProc(HMODULE hmod, LPCWSTR pszType,
+	LPWSTR pszName, LONG_PTR lParam)
 {
-	long ln = (long)pszName;
-	if (ln >= 0x10000)
+	LPTSTR ln = pszName;
+	if (_wtol(ln) >= 0x10000)
 		return true;
 
 	try
 	{
-		RegisterTypeLibrary(ln, true);
+		RegisterTypeLibrary(_wtol(ln), true);
 	}
 	catch (Throwable & thr)
 	{
+		#ifndef _M_X64
 		*(HRESULT *)lParam = thr.Error();
+		#else
+		lParam = thr.Error();
+		#endif
 	}
 
 	return true;
 }
 
 
-static BOOL CALLBACK UnregisterTypeLibProc(HMODULE hmod, LPCTSTR pszType,
-	LPTSTR pszName, LONG lParam)
+static BOOL CALLBACK UnregisterTypeLibProc(HMODULE hmod, LPCWSTR pszType,
+	LPWSTR pszName, LONG_PTR lParam)
 {
-	long ln = (long)pszName;
-	if (ln >= 0x10000)
+	LPTSTR ln = pszName;
+	if (_wtol(ln) >= 0x10000)
 		return true;
 
 
 	try
 	{
-		RegisterTypeLibrary(ln, false);
+		RegisterTypeLibrary(_wtol(ln), false);
 	}
 	catch (Throwable & thr)
 	{
+#ifndef _M_X64
 		*(HRESULT *)lParam = thr.Error();
+#else
+		lParam = thr.Error();
+#endif
 	}
 
 	return true;
 }
-
 
 static void RegisterAllTypeLibraries(BOOL fRegister)
 {
 	long l=0;
 
-	if (!EnumResourceNames(ModuleEntry::GetModuleHandle(), _T("TYPELIB"),
-			fRegister ? &RegisterTypeLibProc : &UnregisterTypeLibProc,
-			l))
+	if (!EnumResourceNames(ModuleEntry::GetModuleHandle(), _T("TYPELIB"), fRegister ? &RegisterTypeLibProc : &UnregisterTypeLibProc, l))
 	{
 		DWORD dw = GetLastError();
 
@@ -638,7 +643,6 @@ static void RegisterAllTypeLibraries(BOOL fRegister)
 		}
 	}
 }
-
 
 /*************************************************************************************
 	Load the type library.
@@ -678,7 +682,7 @@ void FillInts(void * pv, int n, int cn)
 {
 	AssertPtrSize(pv, cn * isizeof(int));
 
-#ifdef NO_ASM
+#if defined(NO_ASM) || defined(_M_X64)
 
 	int * pn = (int *)pv;
 	int * pnLim = pn + cn;
@@ -686,7 +690,7 @@ void FillInts(void * pv, int n, int cn)
 	while (pn < pnLim)
 		*pn++ = n;
 
-#else // !NO_ASM
+#else // IF ASM supported (includes WIN32) - When NO_ASM not defined
 
 	__asm
 		{
@@ -703,7 +707,7 @@ void FillInts(void * pv, int n, int cn)
 		rep		stosd
 		}
 
-#endif //!NO_ASM
+#endif
 }
 
 
@@ -714,7 +718,7 @@ void FillShorts(void * pv, short sn, int csn)
 {
 	AssertPtrSize(pv, csn * isizeof(short));
 
-#ifdef NO_ASM
+#if defined(NO_ASM) || defined(_M_X64)
 
 	short * psn = (short *)pv;
 	short * psnLim = psn + csn;
@@ -722,7 +726,7 @@ void FillShorts(void * pv, short sn, int csn)
 	while (psn < psnLim)
 		*psn++ = sn;
 
-#else // !NO_ASM
+#else // IF ASM supported (includes WIN32) - When NO_ASM not defined
 
 	__asm
 		{
@@ -756,7 +760,7 @@ LInts:
 LDone:
 		}
 
-#endif //!NO_ASM
+#endif
 }
 
 
@@ -767,7 +771,7 @@ void ReverseBytes(void * pv, int cb)
 {
 	AssertPtrSize(pv, cb);
 
-#ifdef NO_ASM
+#if defined(NO_ASM) || defined(_M_X64)
 
 	byte * pb1 = (byte *)pv;
 	byte * pb2 = (byte *)pv + cb - 1;
@@ -780,7 +784,7 @@ void ReverseBytes(void * pv, int cb)
 		*pb2-- = b;
 	}
 
-#else // !NO_ASM
+#else // IF ASM supported (includes WIN32) - When NO_ASM not defined
 
 	__asm
 		{
@@ -808,7 +812,7 @@ LLoop:
 LDone:
 		}
 
-#endif //!NO_ASM
+#endif
 }
 
 
@@ -819,7 +823,7 @@ void ReverseInts(void * pv, int cn)
 {
 	AssertPtrSize(pv, cn * isizeof(int));
 
-#ifdef NO_ASM
+#if defined(NO_ASM) || defined(_M_X64)
 
 	int * pn1 = (int *)pv;
 	int * pn2 = (int *)pv + cn - 1;
@@ -832,7 +836,7 @@ void ReverseInts(void * pv, int cn)
 		*pn2-- = n;
 	}
 
-#else // !NO_ASM
+#else // IF ASM supported (includes WIN32) - When NO_ASM not defined
 
 	__asm
 		{
@@ -860,7 +864,7 @@ LLoop:
 LDone:
 		}
 
-#endif //!NO_ASM
+#endif
 }
 
 
@@ -888,7 +892,7 @@ void SwapBytes(void * pv1, void * pv2, int cb)
 	AssertPtrSize(pv1, cb);
 	AssertPtrSize(pv2, cb);
 
-#ifdef NO_ASM
+#if defined(NO_ASM) || defined(_M_X64)
 
 	byte *pb1 = (byte *)pv1;
 	byte *pb2 = (byte *)pv2;
@@ -901,7 +905,7 @@ void SwapBytes(void * pv1, void * pv2, int cb)
 		*pb2++ = b;
 	}
 
-#else // !NO_ASM
+#else // IF ASM supported (includes WIN32) - When NO_ASM not defined
 
 	__asm
 		{
@@ -944,7 +948,7 @@ LByteLoop:
 LDone:
 		}
 
-#endif //!NO_ASM
+#endif
 }
 
 
@@ -1383,7 +1387,7 @@ void SmartVariant::GetObjectOrNull(REFIID iid, void ** ppv)
 }
 
 
-#if WIN32
+#if defined(_WIN32) || defined(_M_X64)
 /*----------------------------------------------------------------------------------------------
 	Convert a pathname to its long form.
 ----------------------------------------------------------------------------------------------*/
@@ -1445,7 +1449,7 @@ const char * AsciiHresult(HRESULT hr)
 	CASE_HRESULT(STG_E_SEEKERROR)
 	CASE_HRESULT(STG_E_READFAULT)
 	CASE_HRESULT(STG_E_WRITEFAULT)
-#ifdef WIN32
+#if defined(_WIN32) || defined(_M_X64)
 	CASE_HRESULT(CO_E_INIT_TLS)
 	CASE_HRESULT(CO_E_INIT_SHARED_ALLOCATOR)
 	CASE_HRESULT(CO_E_INIT_MEMORY_ALLOCATOR)
@@ -2012,7 +2016,7 @@ const wchar_t* __UnicodeHresult(HRESULT hr)
 	CASE_HRESULT(STG_E_SEEKERROR)
 	CASE_HRESULT(STG_E_READFAULT)
 	CASE_HRESULT(STG_E_WRITEFAULT)
-#ifdef WIN32
+#if defined(_WIN32) || defined(_M_X64)
 	CASE_HRESULT(CO_E_INIT_TLS)
 	CASE_HRESULT(CO_E_INIT_SHARED_ALLOCATOR)
 	CASE_HRESULT(CO_E_INIT_MEMORY_ALLOCATOR)
@@ -2550,7 +2554,7 @@ const wchar* UnicodeHresult(HRESULT hr)
 	return stub.Chars();
 }
 
-#if WIN32
+#if defined(_WIN32) || defined(_M_X64)
 const wchar_t kchDirSep[] = L"\\";
 #else//WIN32
 const wchar_t kchDirSep[] = L"/";
@@ -2561,7 +2565,7 @@ const wchar_t kchDirSep[] = L"/";
 ----------------------------------------------------------------------------------------------*/
 StrUni DirectoryFinder::FwRootDataDir()
 {
-#ifdef WIN32
+#if defined(_WIN32) || defined(_M_X64)
 	RegKey rk;
 	StrUni stuResult;
 	if (rk.InitCu(REGISTRYPATHWITHVERSION) ||
@@ -2606,7 +2610,7 @@ StrUni DirectoryFinder::FwRootDataDir()
 ----------------------------------------------------------------------------------------------*/
 StrUni DirectoryFinder::FwRootCodeDir()
 {
-#ifdef WIN32
+#if defined(_WIN32) || defined(_M_X64)
 	RegKey rk;
 	StrUni stuResult;
 	if (rk.InitCu(REGISTRYPATHWITHVERSION) ||

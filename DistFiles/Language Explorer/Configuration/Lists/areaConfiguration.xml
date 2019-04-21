@@ -9,6 +9,40 @@
 		<command id="CmdConfigureList" label="List..." message="ConfigureList"/>
 		<command id="CmdAddCustomList" label="Custom _List..." message="AddCustomList"/>
 		<command id="CmdDeleteCustomList" label="Delete Custom _List" message="DeleteCustomList"/>
+		<command id="CmdDuplicateSemDom" label="_Semantic Domain" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmSemanticDomain" noCopy="SemanticDomainList"/>
+		</command>
+		<command id="CmdDuplicateAnnotationDef" label="_Annotation Definition" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmAnnotationDefn"/>
+		</command>
+		<command id="CmdDuplicatePossibility" label="_Item" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmPossibility" restrictFromClerkID="ProdRestrict"
+			noCopy="ConfidenceList DialectsList ExtNoteTypeList GenreList LanguagesList PositionList
+			PublicationList RestrictionsList RoleList SenseTypeList StatusList TranslationTypeList
+			EducationList RecTypeList TimeOfDayList UsageTypeList"/>
+		</command>
+		<command id="CmdDuplicateCustomItem" label="_Item" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmCustomItem"/>
+		</command>
+		<command id="CmdDuplicateMorphType" label="_Morph Type" message="DuplicateItemInVector" icon="Copy">
+			<params className="MoMorphType"/>
+		</command>
+		<command id="CmdDuplicateAnthroCategory" label="Anthropology _Category" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmAnthroItem" noCopy="AnthropologyList"/>
+		</command>
+		<command id="CmdDuplicatePerson" label="_Person" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmPerson" noCopy="PeopleList"/>
+		</command>
+		<command id="CmdDuplicateLocation" label="_Location" message="DuplicateItemInVector" icon="Copy">
+			<params className="CmLocation" noCopy="LocationList"/>
+		</command>
+		<command id="CmdDuplicateLexRefType" label="_Lexical Reference Type" message="DuplicateItemInVector" icon="Copy">
+			<params className="LexRefType" noCopy="LexRefTypeList"/>
+		</command>
+		<command id="CmdDuplicateFeatureType" label="_Feature Type" message="DuplicateItemInVector" icon="Copy">
+			<params className="FsFeatStrucType" noCopy="featureTypes"/>
+		</command>
+
 		<command id="CmdInsertSemDom" label="_Semantic Domain" message="InsertItemInVector" icon="AddItem">
 			<params className="CmSemanticDomain"/>
 		</command>
@@ -16,7 +50,7 @@
 			<params className="CmAnnotationDefn"/>
 		</command>
 		<command id="CmdInsertPossibility" label="_Item" message="InsertItemInVector" icon="AddItem">
-			<params className="CmPossibility" restrictFromClerkID="ProdRestrict DiscChartTemplateList"/>
+			<params className="CmPossibility" restrictFromClerkID="ProdRestrict"/>
 		</command>
 		<command id="CmdInsertCustomItem" label="_Item" message="InsertItemInVector" icon="AddItem">
 			<params className="CmCustomItem"/>
@@ -39,22 +73,24 @@
 		<command id="CmdInsertFeatureType" label="_Feature Type" message="InsertItemInVector" icon="AddItem">
 			<params className="FsFeatStrucType"/>
 		</command>
+
 		<command id="CmdJumpToAcademicDomainList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="domainTypeEdit" className="CmPossibility" ownerClass="LexDb" ownerField="DomainTypes"/>
 		</command>
 		<command id="CmdJumpToAnthroList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="anthroEdit" className="CmAnthroItem" ownerClass="LangProject" ownerField="AnthroList"/>
 		</command>
-
 		<command id="CmdJumpToLexiconEditWithFilter" label="Filter for Lexical Entries with this category" message="JumpToLexiconEditFilterAnthroItems">
 			<parameters tool="lexiconEdit" className="CmAnthroItem" ownerClass="LangProject" ownerField="AnthroList"/>
 		</command>
 		<command id="CmdJumpToNotebookEditWithFilter" label="Filter for Notebook Records with this category" message="JumpToNotebookEditFilterAnthroItems">
 			<parameters tool="notebookEdit" className="CmAnthroItem" ownerClass="LangProject" ownerField="AnthroList"/>
 		</command>
-
 		<command id="CmdJumpToConfidenceList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="confidenceEdit" className="CmPossibility" ownerClass="LangProject" ownerField="ConfidenceLevels"/>
+		</command>
+		<command id="CmdJumpToDialectLabelsList" label="Show in {0} list" message="JumpToTool">
+			<parameters tool="dialectsListEdit" className="CmPossibility" ownerClass="LexDb" ownerField="DialectLabels"/>
 		</command>
 		<command id="CmdJumpToDiscChartMarkerList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="chartmarkEdit" className="CmPossibility" ownerClass="DsDiscourseData" ownerField="ChartMarkers"/>
@@ -64,6 +100,12 @@
 		</command>
 		<command id="CmdJumpToEducationList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="educationEdit" className="CmPossibility" ownerClass="LangProject" ownerField="Education"/>
+		</command>
+		<command id="CmdJumpToExtNoteTypeList" label="Show in {0} list" message="JumpToTool">
+			<parameters tool="extNoteTypeEdit" className="CmPossibility" ownerClass="LexDb" ownerField="ExtendedNoteTypes"/>
+		</command>
+		<command id="CmdJumpToLanguagesList" label="Show in {0} list" message="JumpToTool">
+			<parameters tool="languagesListEdit" className="CmPossibility" ownerClass="LexDb" ownerField="Languages"/>
 		</command>
 		<command id="CmdJumpToRoleList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="roleEdit" className="CmPossibility" ownerClass="LangProject" ownerField="Roles"/>
@@ -80,9 +122,9 @@
 		<command id="CmdJumpToPublicationList" label="Show in {0} list" message="JumpToTool">
 			<parameters tool="publicationsEdit" className="CmPossibility" ownerClass="LexDb" ownerField="PublicationTypes"/>
 		</command>
-	<command id="CmdInsertLexEntryInflType" label="_Type" message="InsertItemInVector" icon="AddItem">
-	  <params className="LexEntryInflType"/>
-	</command>
+		<command id="CmdInsertLexEntryInflType" label="_Type" message="InsertItemInVector" icon="AddItem">
+			<params className="LexEntryInflType"/>
+		</command>
 		<command id="CmdInsertLexEntryType" label="_Type" message="InsertItemInVector" icon="AddItem">
 			<params className="LexEntryType"/>
 		</command>
@@ -258,6 +300,16 @@
 			<item command="CmdInsertFeatureType" defaultVisible="false"/>
 			<item command="CmdDataTree-Insert-Possibility" defaultVisible="false" label="Subitem"/>
 			<item command="CmdDataTree-Insert-CustomItem" defaultVisible="false" label="Subitem"/>
+			<item command="CmdDuplicateSemDom" defaultVisible="false"/>
+			<item command="CmdDuplicateAnnotationDef" defaultVisible="false"/>
+			<item command="CmdDuplicatePossibility" defaultVisible="false"/>
+			<item command="CmdDuplicateCustomItem" defaultVisible="false"/>
+			<item command="CmdDuplicateMorphType" defaultVisible="false"/>
+			<item command="CmdDuplicateAnthroCategory" defaultVisible="false"/>
+			<item command="CmdDuplicatePerson" defaultVisible="false"/>
+			<item command="CmdDuplicateLocation" defaultVisible="false"/>
+			<item command="CmdDuplicateLexRefType" defaultVisible="false"/>
+			<item command="CmdDuplicateFeatureType" defaultVisible="false"/>
 		</toolbar>
 		<include path="Extensions/*/AreaConfigurationExtension.xml" query="root/toolbarsAddOn/*"/>
 	</toolbarsAddOn>
@@ -424,11 +476,41 @@
 						<sortMethod label="Default" assemblyPath="Filters.dll" class="SIL.FieldWorks.Filters.PropertyRecordSorter" sortProperty="ShortName"/>
 					</sortMethods>
 				</clerk>
+				<clerk id="DialectsList">
+					<recordList owner="LexDb" property="DialectLabels">
+						<dynamicloaderinfo assemblyPath="xWorks.dll" class="SIL.FieldWorks.XWorks.PossibilityRecordList"/>
+					</recordList>
+					<treeBarHandler assemblyPath="xWorks.dll" expand="false" hierarchical="true" includeAbbr="false" ws="best vernoranal" class="SIL.FieldWorks.XWorks.PossibilityTreeBarHandler"/>
+					<filters/>
+					<sortMethods>
+						<sortMethod label="Default" assemblyPath="Filters.dll" class="SIL.FieldWorks.Filters.PropertyRecordSorter" sortProperty="ShortName"/>
+					</sortMethods>
+				</clerk>
+				<clerk id="ExtNoteTypeList">
+					<recordList owner="LexDb" property="ExtendedNoteTypes">
+						<dynamicloaderinfo assemblyPath="xWorks.dll" class="SIL.FieldWorks.XWorks.PossibilityRecordList"/>
+					</recordList>
+					<treeBarHandler assemblyPath="xWorks.dll" expand="false" hierarchical="true" includeAbbr="false" ws="best analysis" class="SIL.FieldWorks.XWorks.PossibilityTreeBarHandler"/>
+					<filters/>
+					<sortMethods>
+						<sortMethod label="Default" assemblyPath="Filters.dll" class="SIL.FieldWorks.Filters.PropertyRecordSorter" sortProperty="ShortName"/>
+					</sortMethods>
+				</clerk>
 				<clerk id="RoleList">
 					<recordList owner="LangProject" property="Roles">
 						<dynamicloaderinfo assemblyPath="xWorks.dll" class="SIL.FieldWorks.XWorks.PossibilityRecordList"/>
 					</recordList>
 					<treeBarHandler assemblyPath="xWorks.dll" expand="false" hierarchical="true" includeAbbr="false" ws="best analysis" class="SIL.FieldWorks.XWorks.PossibilityTreeBarHandler"/>
+					<filters/>
+					<sortMethods>
+						<sortMethod label="Default" assemblyPath="Filters.dll" class="SIL.FieldWorks.Filters.PropertyRecordSorter" sortProperty="ShortName"/>
+					</sortMethods>
+				</clerk>
+				<clerk id="LanguagesList">
+					<recordList owner="LexDb" property="Languages">
+						<dynamicloaderinfo assemblyPath="xWorks.dll" class="SIL.FieldWorks.XWorks.PossibilityRecordList"/>
+					</recordList>
+					<treeBarHandler assemblyPath="xWorks.dll" expand="false" hierarchical="false" includeAbbr="false" ws="best analysis" class="SIL.FieldWorks.XWorks.PossibilityTreeBarHandler"/>
 					<filters/>
 					<sortMethods>
 						<sortMethod label="Default" assemblyPath="Filters.dll" class="SIL.FieldWorks.Filters.PropertyRecordSorter" sortProperty="ShortName"/>

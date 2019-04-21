@@ -7,12 +7,10 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Linq;
-using SIL.CoreImpl;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.FwCoreDlgs.BackupRestore;
-using XCore;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.WritingSystems;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -24,7 +22,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		private const string HelpTopic = "khtpProjPropsMergeWS";
 
 		private readonly CoreWritingSystemDefinition m_ws;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private readonly IHelpTopicProvider m_helpTopicProvider;
 
 		private Label m_wsLabel;
@@ -41,9 +39,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <summary>
 		/// Initializes a new instance of the <see cref="MergeWritingSystemDlg"/> class.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "infoIcon is a reference")]
-		public MergeWritingSystemDlg(FdoCache cache, CoreWritingSystemDefinition ws, IEnumerable<CoreWritingSystemDefinition> wss, IHelpTopicProvider helpTopicProvider)
+		public MergeWritingSystemDlg(LcmCache cache, CoreWritingSystemDefinition ws, IEnumerable<CoreWritingSystemDefinition> wss, IHelpTopicProvider helpTopicProvider)
 		{
 			m_cache = cache;
 			m_ws = ws;
@@ -57,7 +53,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			m_infoPictureBox.Image = infoIcon.ToBitmap();
 			m_infoPictureBox.Size = infoIcon.Size;
 
-			foreach (CoreWritingSystemDefinition curWs in wss.Except(new[] { ws }))
+			foreach (CoreWritingSystemDefinition curWs in wss.Where(x => x.Handle > 0).Except(new[] { ws }))
 				m_wsListBox.Items.Add(curWs);
 			m_wsListBox.SelectedIndex = 0;
 
@@ -70,6 +66,13 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				m_helpProvider.SetHelpKeyword(this, m_helpTopicProvider.GetHelpString(HelpTopic));
 				m_helpProvider.SetHelpNavigator(this, HelpNavigator.Topic);
 			}
+		}
+
+		/// <summary/>
+		protected override void Dispose(bool disposing)
+		{
+			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + " ******");
+			base.Dispose(disposing);
 		}
 
 		/// <summary>

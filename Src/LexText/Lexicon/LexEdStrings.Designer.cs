@@ -340,7 +340,7 @@ namespace SIL.FieldWorks.XWorks.LexEd {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Choose Complex Forms to display in Stem-based views.
+        ///   Looks up a localized string similar to Choose Complex Forms to display in Lexeme-based views.
         /// </summary>
         internal static string ksChooseVisibleComplexForms {
             get {
@@ -1560,6 +1560,17 @@ namespace SIL.FieldWorks.XWorks.LexEd {
         internal static string LiftSRFailureDetectedOnStartupTitle {
             get {
                 return ResourceManager.GetString("LiftSRFailureDetectedOnStartupTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &amp;lt;!DOCTYPE html&amp;gt;&amp;lt;html&amp;gt;&amp;lt;body style=&apos;font-family:&quot;Microsoft Sans Serif&quot;,&quot;sans-serif&quot;;font-size:9.5pt&apos;&amp;gt;
+        ///&amp;lt;p style=&apos;font-size:11pt;margin-bottom:0in&apos;&amp;gt;Getting Started&amp;lt;/p&amp;gt;
+        ///&amp;lt;p style=&apos;margin:0in;text-indent:10.5pt&apos;&amp;gt;When you begin to share data for the first time, the computer with the most authoritative copy &amp;lt;b&amp;gt;must&amp;lt;/b&amp;gt; be the first to send/receive, and all other computers must have the project &amp;lt;b&amp;gt;removed&amp;lt;/b&amp;gt; from that computer before proceeding.&amp;lt;/p&amp;gt; [rest of string was truncated]&quot;;.
+        /// </summary>
+        internal static string SendReceiveForTheFirstTimeContent {
+            get {
+                return ResourceManager.GetString("SendReceiveForTheFirstTimeContent", resourceCulture);
             }
         }
         

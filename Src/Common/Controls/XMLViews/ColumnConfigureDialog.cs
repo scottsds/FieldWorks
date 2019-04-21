@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -8,10 +8,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.Utils;
 using SIL.WritingSystems;
 using XCore;
@@ -21,7 +21,7 @@ namespace SIL.FieldWorks.Common.Controls
 	/// <summary>
 	/// Summary description for ColumnConfigureDialg.
 	/// </summary>
-	public class ColumnConfigureDialog : Form, IFWDisposable
+	public class ColumnConfigureDialog : Form
 	{
 		private const string s_helpTopic = "khtpConfigureColumns";
 		private Label label1;
@@ -31,17 +31,17 @@ namespace SIL.FieldWorks.Common.Controls
 		private Button okButton;
 		private Button cancelButton;
 		private Button helpButton;
-		private Button addButton;
+		internal Button addButton;
 		private Button removeButton;
 		internal Button moveUpButton;
 		internal Button moveDownButton;
-		private FwOverrideComboBox wsCombo;
+		internal FwOverrideComboBox wsCombo;
 		private Label label3;
 		internal ListView currentList;
 
 		List<XmlNode> m_possibleColumns;
 		List<XmlNode> m_currentColumns;
-		readonly FdoCache m_cache;
+		readonly LcmCache m_cache;
 		private readonly IHelpTopicProvider m_helpTopicProvider;
 
 		bool m_fUpdatingWsCombo = false; // true during UpdateWsCombo
@@ -79,7 +79,7 @@ namespace SIL.FieldWorks.Common.Controls
 		WsComboContent m_wccCurrent = WsComboContent.kwccNone;
 		private int m_hvoRootObj = 0;
 
-		private ListView optionsList;
+		internal ListView optionsList;
 		private HelpProvider helpProvider;
 		private IContainer components;
 		private ColumnHeader columnHeader1;
@@ -105,7 +105,7 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			m_possibleColumns = possibleColumns;
 			m_currentColumns = currentColumns;
-			m_cache = propertyTable.GetValue<FdoCache>("cache");
+			m_cache = propertyTable.GetValue<LcmCache>("cache");
 			//
 			// Required for Windows Form Designer support
 			//
@@ -224,9 +224,22 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			if (wsLabel != "")
 			{
+				var itemToSelect = wsLabel;
+				switch (wsLabel)
+				{
+					case "analysis vernacular":
+					case "vernacular analysis":
+						itemToSelect = wsLabel.Split(' ')[0];
+						break;
+				}
 				foreach (WsComboItem item in wsCombo.Items)
-					if (item.Id == wsLabel)
+				{
+					if (item.Id == itemToSelect)
+					{
 						wsCombo.SelectedItem = item;
+						break;
+					}
+				}
 			}
 		}
 
@@ -304,7 +317,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary>
 		/// Initialize the combo box for the standard set of writing systems.
 		/// </summary>
-		public static void AddWritingSystemsToCombo(FdoCache cache,
+		public static void AddWritingSystemsToCombo(LcmCache cache,
 			ComboBox.ObjectCollection items, WsComboContent contentToAdd)
 		{
 			AddWritingSystemsToCombo(cache, items, contentToAdd, false, false);
@@ -313,7 +326,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary>
 		/// Initialize the combo box for the standard set of writing systems.
 		/// </summary>
-		public static void AddWritingSystemsToCombo(FdoCache cache,
+		public static void AddWritingSystemsToCombo(LcmCache cache,
 			ComboBox.ObjectCollection items, WsComboContent contentToAdd, bool skipDefaults)
 		{
 			AddWritingSystemsToCombo(cache, items, contentToAdd, skipDefaults, false);
@@ -332,7 +345,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// adds all reasonable single generic items not already included by skipDefaults.
 		/// Ignored if skipDefaults is true.</param>
 		/// <remarks>This is static because ConfigureInterlinDialog uses it</remarks>
-		public static void AddWritingSystemsToCombo(FdoCache cache,
+		public static void AddWritingSystemsToCombo(LcmCache cache,
 			ComboBox.ObjectCollection items, WsComboContent contentToAdd, bool skipDefaults,
 			bool allowMultiple)
 		{
@@ -523,7 +536,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="items">The items.</param>
 		/// <param name="wss">The ws array.</param>
 		/// ------------------------------------------------------------------------------------
-		public static void AddWritingSystemsToCombo(FdoCache cache, ComboBox.ObjectCollection items, IEnumerable<CoreWritingSystemDefinition> wss)
+		public static void AddWritingSystemsToCombo(LcmCache cache, ComboBox.ObjectCollection items, IEnumerable<CoreWritingSystemDefinition> wss)
 		{
 			foreach (CoreWritingSystemDefinition ws in wss)
 				items.Add(new WsComboItem(ws.DisplayLabel, ws.Id));
@@ -554,7 +567,7 @@ namespace SIL.FieldWorks.Common.Controls
 			var cols = new string[2];
 			var label = XmlUtils.GetLocalizedAttributeValue(node, "label", null);
 			if (label == null)
-				label = XmlUtils.GetManditoryAttributeValue(node, "label");
+				label = XmlUtils.GetMandatoryAttributeValue(node, "label");
 			cols[0] = label;
 			var wsParam = XmlViewsUtils.FindWsParam(node);
 			var dispCategory = TranslateWsParamToLocalizedDisplayCategory(wsParam);
@@ -564,7 +577,7 @@ namespace SIL.FieldWorks.Common.Controls
 			// or 2) the user deleted the Writing System... try to revert to a default ws
 			//       unless there is a column for that already, in which case return null
 			//       so we can delete this column.
-			if (String.IsNullOrEmpty(dispCategory) && !String.IsNullOrEmpty(wsParam))
+			if (string.IsNullOrEmpty(dispCategory) && !string.IsNullOrEmpty(wsParam))
 			{
 				// Display the language name, not its ICU locale.
 				CoreWritingSystemDefinition ws;
@@ -593,7 +606,7 @@ namespace SIL.FieldWorks.Common.Controls
 				itemWithToolTip .ImageIndex = 0;
 			}
 
-			return itemWithToolTip ;
+			return itemWithToolTip;
 		}
 
 		private string TranslateWsParamToLocalizedDisplayCategory(string wsParam)
@@ -1109,7 +1122,7 @@ namespace SIL.FieldWorks.Common.Controls
 				label = XmlUtils.GetLocalizedAttributeValue(CurrentSpecs[columnIndex],
 															"label", null);
 			if (label == null)
-				label = XmlUtils.GetManditoryAttributeValue(CurrentSpecs[columnIndex], "label");
+				label = XmlUtils.GetMandatoryAttributeValue(CurrentSpecs[columnIndex], "label");
 			return label;
 		}
 
@@ -1121,7 +1134,8 @@ namespace SIL.FieldWorks.Common.Controls
 			int index = CurrentListIndex;
 			if (index >= 0)
 				currentList.Items[index].Selected = false;
-			AddCurrentItem(columnBeingAdded).Selected = true;
+			var currentItem = AddCurrentItem(columnBeingAdded);
+			currentItem.Selected = true;
 
 			//When adding the columnBeingAdded, try to adjust the label so that it is unique. This happens when
 			//the column is already one that exists in the list of currentColumns.
@@ -1143,6 +1157,8 @@ namespace SIL.FieldWorks.Common.Controls
 			{
 				ShowDuplicatesWarning(GetDuplicateColumns());
 			}
+			// Select the item in the ws combo box by its name (see MakeCurrentItem method for details of item construction)
+			wsCombo.SelectedItem = currentItem.SubItems[1];
 
 			currentList.Focus();
 		}
@@ -1339,7 +1355,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="wsForOptions"></param>
 		/// <param name="defaultMagicName"></param>
 		/// <returns></returns>
-		public static WsComboContent ChooseComboContent(FdoCache cache, int wsForOptions, string defaultMagicName)
+		public static WsComboContent ChooseComboContent(LcmCache cache, int wsForOptions, string defaultMagicName)
 		{
 			string magicName = "";
 			if (wsForOptions < 0)
@@ -1423,7 +1439,7 @@ namespace SIL.FieldWorks.Common.Controls
 			GenerateColumnLabel(replacement, m_cache);
 
 			XmlAttribute xa = replacement.Attributes["label"];
-			xa.Value = XmlUtils.GetManditoryAttributeValue(replacement, "label");
+			xa.Value = XmlUtils.GetMandatoryAttributeValue(replacement, "label");
 			var listItem = MakeCurrentItem(replacement);
 			if (listItem == null) // The user deleted this ws and there was already one with the default ws.
 			{
@@ -1446,9 +1462,9 @@ namespace SIL.FieldWorks.Common.Controls
 		/// column already.
 		/// </summary>
 		/// <param name="colSpec">The XML node of the column specification</param>
-		/// <param name="cache">The FdoCache</param>
+		/// <param name="cache">The LcmCache</param>
 		/// ------------------------------------------------------------------------------------
-		static public void GenerateColumnLabel(XmlNode colSpec, FdoCache cache)
+		static public void GenerateColumnLabel(XmlNode colSpec, LcmCache cache)
 		{
 			string newWs = XmlViewsUtils.FindWsParam(colSpec);
 			string originalWs = XmlUtils.GetOptionalAttributeValue(colSpec, "originalWs");
@@ -1461,7 +1477,7 @@ namespace SIL.FieldWorks.Common.Controls
 				// generate a label if it is changed again: we know both the original label
 				// (to possibly append an abbreviation to) and the original writing system (so
 				// we know whether to mark it at all).
-				originalLabel = XmlUtils.GetManditoryAttributeValue(colSpec, "label");
+				originalLabel = XmlUtils.GetMandatoryAttributeValue(colSpec, "label");
 				XmlUtils.AppendAttribute(colSpec, "originalLabel", originalLabel);
 			}
 
@@ -1513,10 +1529,10 @@ namespace SIL.FieldWorks.Common.Controls
 			{
 				string xVal = XmlUtils.GetLocalizedAttributeValue(x, "label", null);
 				if (xVal == null)
-					xVal = XmlUtils.GetManditoryAttributeValue(x, "label");
+					xVal = XmlUtils.GetMandatoryAttributeValue(x, "label");
 				string yVal = XmlUtils.GetLocalizedAttributeValue(y, "label", null);
 				if (yVal == null)
-					yVal = XmlUtils.GetManditoryAttributeValue((XmlNode)y, "label");
+					yVal = XmlUtils.GetMandatoryAttributeValue((XmlNode)y, "label");
 				return xVal.CompareTo(yVal);
 			}
 
@@ -1542,10 +1558,11 @@ namespace SIL.FieldWorks.Common.Controls
 
 		public override string ToString()
 		{
-			return XmlUtils.GetManditoryAttributeValue(m_item, "label");
+			return XmlUtils.GetMandatoryAttributeValue(m_item, "label");
 		}
 
 	}
+
 	/// <summary>
 	///
 	/// </summary>
@@ -1553,6 +1570,7 @@ namespace SIL.FieldWorks.Common.Controls
 	{
 		private readonly string m_name;
 		private readonly string m_id;
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="WsComboItem"/> class.
 		/// </summary>
@@ -1563,6 +1581,7 @@ namespace SIL.FieldWorks.Common.Controls
 			m_name = name;
 			m_id = id;
 		}
+
 		/// <summary>
 		/// Returns a <see cref="T:System.String"/> that represents the current <see cref="T:System.Object"/>.
 		/// </summary>
@@ -1573,6 +1592,32 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			return m_name;
 		}
+
+		/// <summary>
+		/// Returns true if the given object is a WsComboItem and the name and id match this WsComboItem.
+		/// </summary>
+		/// <param name="obj">The object to compare</param>
+		/// <returns>True if equal, false if not equal</returns>
+		public override bool Equals(object obj)
+		{
+			var item = obj as WsComboItem;
+			return item != null &&
+				   m_name == item.m_name &&
+				   m_id == item.m_id;
+		}
+
+		/// <summary>
+		/// Implemented for the Equals method.
+		/// </summary>
+		/// <returns></returns>
+		public override int GetHashCode()
+		{
+			var hashCode = 641297398;
+			hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(m_name);
+			hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(m_id);
+			return hashCode;
+		}
+
 		/// <summary>
 		/// Gets the writing system identifier.
 		/// </summary>
@@ -1581,5 +1626,15 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			get { return m_id;}
 		}
+
+		/// <summary>
+		/// Stores the handle of the writing system.
+		/// </summary>
+		public int WritingSystem { get; set; }
+
+		/// <summary>
+		/// Stores the type of the writing system (vernacular, analysis, or both)
+		/// </summary>
+		public string WritingSystemType { get; set; }
 	}
 }

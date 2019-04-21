@@ -1,20 +1,19 @@
-﻿// Copyright (c) 2015 SIL International
+﻿// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
-	public class InsertRecordDlg : Form, IFWDisposable
+	public class InsertRecordDlg : Form
 	{
 		private FwTextBox m_titleTextBox;
 		private Label m_titleLabel;
@@ -25,7 +24,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		private HelpProvider m_helpProvider;
 		private TreeCombo m_typeCombo;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private IHelpTopicProvider m_helpTopicProvider;
 		private PossibilityListPopupTreeManager m_typePopupTreeManager;
 		private IRnGenericRec m_newRecord;
@@ -94,7 +93,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		}
 		#endregion Dispose
 
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject owner)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject owner)
 		{
 			CheckDisposed();
 
@@ -130,7 +129,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			m_titleTextBox.Select();
 		}
 
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject owner, ITsString tssTitle)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, ICmObject owner, ITsString tssTitle)
 		{
 			SetDlgInfo(cache, mediator, propertyTable, owner);
 			m_titleTextBox.Tss = tssTitle;

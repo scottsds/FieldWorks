@@ -1,14 +1,8 @@
-// --------------------------------------------------------------------------------------------
-// <copyright from='2011' to='2011' company='SIL International'>
-// Copyright (c) 2011-2015 SIL International
+// Copyright (c) 2011-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
-// (http://www.gnu.org/licenses/lgpl-2.1.html).
-// </copyright>
-// --------------------------------------------------------------------------------------------
-#if __MonoCS__
+// (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows.Forms;
 using Gtk;
@@ -59,6 +53,12 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Linux
 		}
 		#endregion
 
+		#pragma warning disable 0067 // The event is never used
+		public event EventHandler Disposed;
+		public event CancelEventHandler FileOk;
+		public event EventHandler HelpRequest;
+		#pragma warning restore 0067
+
 		#region Filter related private methods
 		protected void ApplyFilter(FileChooserDialog dlg)
 		{
@@ -95,8 +95,6 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Linux
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "currentFilter is a reference")]
 		private int CurrentFilterIndex
 		{
 			get
@@ -210,8 +208,6 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Linux
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Widget is a reference")]
 		protected virtual FileChooserDialog CreateFileChooserDialog()
 		{
 			// TODO: set parent
@@ -343,10 +339,6 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Linux
 			}
 		}
 
-		public event EventHandler Disposed;
-		public event CancelEventHandler FileOk;
-		public event EventHandler HelpRequest;
-
 		public virtual void Reset()
 		{
 			LocalReset();
@@ -410,4 +402,3 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Linux
 		public bool Multiselect { get; set; }
 	}
 }
-#endif

@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -8,13 +8,17 @@ using System.Xml;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text; // StringBuilder
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.Utils;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Filters;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.LCModel;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Controls
 {
@@ -93,7 +97,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <returns>true if we found a value associated with the given key. false if result is in *{key}* format.</returns>
 		public static bool TryFindString(string group, string key, out string result)
 		{
-			result = StringTable.Table.GetString(key, group);
+			result = StringTable.Table.GetString(key, @group);
 			return FoundStringTableString(key, result);
 		}
 
@@ -302,7 +306,7 @@ namespace SIL.FieldWorks.Common.Controls
 		public static string DateTimeCompString(DateTime dt)
 		{
 			string format = "u";	// 2000-08-17 23:32:32Z
-			return dt.ToString(format, System.Globalization.DateTimeFormatInfo.InvariantInfo);
+			return dt.ToString(format, DateTimeFormatInfo.InvariantInfo);
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -349,10 +353,10 @@ namespace SIL.FieldWorks.Common.Controls
 			List<XmlNode> result = new List<XmlNode>(selectNodes.Count);
 			foreach(XmlNode node in selectNodes)
 			{
-				string attVal = XmlUtils.GetManditoryAttributeValue(node, attName);
+				string attVal = XmlUtils.GetMandatoryAttributeValue(node, attName);
 				foreach(XmlNode node1 in sourceNodes)
 				{
-					if (XmlUtils.GetManditoryAttributeValue(node1, attName) == attVal)
+					if (XmlUtils.GetMandatoryAttributeValue(node1, attName) == attVal)
 					{
 						result.Add(node1);
 						break;
@@ -406,7 +410,7 @@ namespace SIL.FieldWorks.Common.Controls
 			case "obj":
 			{
 				int clsid = sda.get_IntProp(hvo, CmObjectTags.kflidClass);
-				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetManditoryAttributeValue(node, "field"), true);
+				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetMandatoryAttributeValue(node, "field"), true);
 				int hvoDst = sda.get_ObjectProp(hvo, flid);
 				if (hvoDst == 0)
 				{
@@ -431,7 +435,7 @@ namespace SIL.FieldWorks.Common.Controls
 			{
 				// very like "obj" except for the loop. How could we capture this?
 				int clsid = sda.get_IntProp(hvo, CmObjectTags.kflidClass);
-				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetManditoryAttributeValue(node, "field"), true);
+				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetMandatoryAttributeValue(node, "field"), true);
 				int chvo = sda.get_VecSize(hvo, flid);
 				if (chvo == 0)
 				{
@@ -585,7 +589,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// Returns an array of string values (keys) for the objects under the layout child nodes.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		static internal string[] ChildKeys(FdoCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
+		static internal string[] ChildKeys(LcmCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
 			LayoutCache layoutCache, XmlNode caller, int wsForce)
 		{
 			string[] result = null;
@@ -601,7 +605,7 @@ namespace SIL.FieldWorks.Common.Controls
 		static private void AddSeparator(ref string item, int ichInsert, XmlNode layout)
 		{
 			string separator = XmlUtils.GetOptionalAttributeValue(layout, "sep");
-			if (string.IsNullOrEmpty(separator))
+			if (String.IsNullOrEmpty(separator))
 				return;
 			bool fCheckForEmptyItems = XmlUtils.GetOptionalBooleanAttributeValue(layout, "checkForEmptyItems", false);
 			if (item == null || ichInsert < 0 || ichInsert > item.Length || fCheckForEmptyItems && item.Length == 0)
@@ -610,7 +614,7 @@ namespace SIL.FieldWorks.Common.Controls
 		}
 
 
-		static private string[] AssembleChildKeys(FdoCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
+		static private string[] AssembleChildKeys(LcmCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
 			LayoutCache layoutCache, XmlNode caller, int wsForce)
 		{
 			return Assemble(ChildKeys(fdoCache, sda, layout, hvo, layoutCache, caller, wsForce));
@@ -630,8 +634,8 @@ namespace SIL.FieldWorks.Common.Controls
 		static int GetFlid(ISilDataAccess sda, XmlNode frag, int hvo)
 		{
 			string stClassName = XmlUtils.GetOptionalAttributeValue(frag,"class");
-			string stFieldName = XmlUtils.GetManditoryAttributeValue(frag,"field");
-			if (string.IsNullOrEmpty(stClassName))
+			string stFieldName = XmlUtils.GetMandatoryAttributeValue(frag,"field");
+			if (String.IsNullOrEmpty(stClassName))
 			{
 				int clid = sda.get_IntProp(hvo, CmObjectTags.kflidClass);
 				return sda.MetaDataCache.GetFieldId2(clid, stFieldName, true);
@@ -647,7 +651,7 @@ namespace SIL.FieldWorks.Common.Controls
 			return items.Length;
 		}
 
-		internal static string DisplayWsLabel(CoreWritingSystemDefinition ws, FdoCache cache)
+		internal static string DisplayWsLabel(CoreWritingSystemDefinition ws, LcmCache cache)
 		{
 			if (ws == null)
 				return "";
@@ -660,7 +664,7 @@ namespace SIL.FieldWorks.Common.Controls
 			return sLabel + " ";
 		}
 
-		static string AddMultipleAlternatives(FdoCache cache, ISilDataAccess sda, IEnumerable<int> wsIds, int hvo, int flid, XmlNode frag)
+		static string AddMultipleAlternatives(LcmCache cache, ISilDataAccess sda, IEnumerable<int> wsIds, int hvo, int flid, XmlNode frag)
 		{
 			string sep = XmlUtils.GetOptionalAttributeValue(frag, "sep", null);
 			bool fLabel = XmlUtils.GetOptionalBooleanAttributeValue(frag, "showLabels", false); // true to 'separate' using multistring labels.
@@ -669,7 +673,7 @@ namespace SIL.FieldWorks.Common.Controls
 			foreach (int ws in wsIds)
 			{
 				string val = sda.get_MultiStringAlt(hvo, flid, ws).Text;
-				if (string.IsNullOrEmpty(val))
+				if (String.IsNullOrEmpty(val))
 					continue; // doesn't even count as 'first'
 				if (fLabel)
 				{
@@ -688,10 +692,9 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 			return result;
 		}
-		internal static string[] AddStringFromOtherObj(XmlNode frag, int hvoTarget, FdoCache cache, ISilDataAccess sda)
+		internal static string[] AddStringFromOtherObj(XmlNode frag, int hvoTarget, LcmCache cache, ISilDataAccess sda)
 		{
 			int flid = XmlVc.GetFlid(frag, hvoTarget, sda);
-			ITsStrFactory tsf = cache.TsStrFactory;
 			CellarPropertyType itype = (CellarPropertyType)sda.MetaDataCache.GetFieldType(flid);
 			if (itype == CellarPropertyType.Unicode)
 			{
@@ -734,7 +737,7 @@ namespace SIL.FieldWorks.Common.Controls
 			string sWs = XmlUtils.GetOptionalAttributeValue(frag, "ws");
 			if (sWs != null && sWs == "current")
 			{
-				if (!s_fMultiFirst && !string.IsNullOrEmpty(s_sMultiSep))
+				if (!s_fMultiFirst && !String.IsNullOrEmpty(s_sMultiSep))
 				{
 					return s_sMultiSep;
 				}
@@ -758,7 +761,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// is the 'part ref' that invoked it.</param>
 		/// <param name="wsForce">if non-zero, "string" elements are forced to use that writing system for multistrings.</param>
 		/// <returns></returns>
-		static public string[] StringsFor(FdoCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
+		static public string[] StringsFor(LcmCache fdoCache, ISilDataAccess sda, XmlNode layout, int hvo,
 			LayoutCache layoutCache, XmlNode caller, int wsForce)
 		{
 			// Some nodes are known to be uninteresting.
@@ -956,7 +959,7 @@ namespace SIL.FieldWorks.Common.Controls
 					}
 					else
 					{
-						string stFieldName = XmlUtils.GetManditoryAttributeValue(layout, "field");
+						string stFieldName = XmlUtils.GetMandatoryAttributeValue(layout, "field");
 						throw new Exception("Bad field type (" + stFieldName + " for hvo " + hvo + " found for " +
 							layout.Name + "  property "	+ flid + " in " + layout.OuterXml);
 					}
@@ -976,7 +979,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// Process a fragment's children against multiple writing systems.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		static private string[] ProcessMultiLingualChildren(FdoCache fdoCache, ISilDataAccess sda, XmlNode frag, int hvo,
+		static private string[] ProcessMultiLingualChildren(LcmCache fdoCache, ISilDataAccess sda, XmlNode frag, int hvo,
 			LayoutCache layoutCache, XmlNode caller, int wsForce)
 		{
 			string sWs = XmlUtils.GetOptionalAttributeValue(frag, "ws");
@@ -1119,7 +1122,7 @@ namespace SIL.FieldWorks.Common.Controls
 				}
 
 				int clsid = sda.get_IntProp(bvi.PathObject(depth), CmObjectTags.kflidClass);
-				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetManditoryAttributeValue(node, "field"), true);
+				int flid = mdc.GetFieldId2(clsid, XmlUtils.GetMandatoryAttributeValue(node, "field"), true);
 				if (flid != bvi.PathFlid(depth))
 					return new NodeDisplayCommand(node); // different field, can't dig deeper.
 				int hvoDst = bvi.PathObject(depth + 1);
@@ -1196,7 +1199,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="wsParam"></param>
 		/// <param name="cache"></param>
 		/// <returns></returns>
-		public static int GetWsFromString(string wsParam, FdoCache cache)
+		public static int GetWsFromString(string wsParam, LcmCache cache)
 		{
 			if (wsParam == null)
 				return 0;
@@ -1209,6 +1212,13 @@ namespace SIL.FieldWorks.Common.Controls
 					return wsContainer.DefaultVernacularWritingSystem.Handle;
 				case "pronunciation":
 					return wsContainer.DefaultPronunciationWritingSystem.Handle;
+				case "reversal":
+				{
+					if (WritingSystemServices.CurrentReversalWsId > 0)
+						return WritingSystemServices.CurrentReversalWsId;
+					int wsmagic;
+					return WritingSystemServices.InterpretWsLabel(cache, wsParam, wsContainer.DefaultAnalysisWritingSystem, 0, 0, null, out wsmagic);
+				}
 				case "":
 					return wsContainer.DefaultAnalysisWritingSystem.Handle;		// Most likely value.
 				default:
@@ -1245,6 +1255,7 @@ namespace SIL.FieldWorks.Common.Controls
 
 		private const string sUnspecComplexFormType = "a0000000-dd15-4a03-9032-b40faaa9a754";
 		private const string sUnspecVariantType = "b0000000-c40e-433e-80b5-31da08771344";
+		private const string sUnspecExtendedNoteType = "c0000000-dd15-4a03-9032-b40faaa9a754";
 
 		/// <summary>
 		/// Returns a 'fake' Guid used to filter unspecified Complex Form types in
@@ -1264,6 +1275,42 @@ namespace SIL.FieldWorks.Common.Controls
 		public static Guid GetGuidForUnspecifiedVariantType()
 		{
 			return new Guid(sUnspecVariantType);
+		}
+
+		/// <summary>
+		/// Returns a 'fake' Guid used to filter unspecified Extended Note types in
+		/// XmlVc. Setup in configuration files by XmlDocConfigureDlg.
+		/// </summary>
+		/// <returns></returns>
+		public static Guid GetGuidForUnspecifiedExtendedNoteType()
+		{
+			return new Guid(sUnspecExtendedNoteType);
+		}
+
+		/// <summary>
+		/// Get a Time property value coverted to a DateTime value.
+		/// </summary>
+		public static DateTime GetTimeProperty(ISilDataAccess sda, int hvo, int flid)
+		{
+			long silTime;
+			try
+			{
+				silTime = sda.get_TimeProp(hvo, flid);
+				return SilTime.ConvertFromSilTime(silTime);
+			}
+			catch
+			{
+				return DateTime.MinValue;
+			}
+		}
+
+		/// <summary>
+		/// Set a Time property to a given DateTime value.
+		/// </summary>
+		public static void SetTimeProperty(ISilDataAccess sda, int hvo, int flid, DateTime dt)
+		{
+			long silTime = SilTime.ConvertToSilTime(dt);
+			sda.SetTime(hvo, flid, silTime);
 		}
 	}
 

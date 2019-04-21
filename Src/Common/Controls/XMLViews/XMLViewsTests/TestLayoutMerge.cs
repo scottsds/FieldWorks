@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2015 SIL International
+﻿// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -10,7 +10,7 @@ using SIL.Utils;
 namespace XMLViewsTests
 {
 	[TestFixture]
-	public class TestLayoutMerge: SIL.FieldWorks.Test.TestUtils.BaseTest
+	public class TestLayoutMerge
 	{
 		void TestMerge(string newMaster, string user, string expectedOutput, string suffix)
 		{
@@ -120,6 +120,22 @@ namespace XMLViewsTests
 		}
 
 		[Test]
+		public void SenseInParaMigratedCorrectly()
+		{
+			TestMerge(
+			@"<layout>
+				<part ref='SensesConfig' label='Senses' param='publishRoot'/>
+			</layout>",
+			@"<layout>
+				<part ref='SensesConfig' label='Senses' param='publishRoot_AsPara' flowType='divInPara'/>
+			</layout>",
+			@"<layout>
+				<part ref='SensesConfig' label='Senses' param='publishRoot_AsPara' flowType='divInPara'/>
+			</layout>",
+			string.Empty);
+		}
+
+		[Test]
 		public void UserCreatedConfigsPreserveParamSuffix()
 		{
 			TestMerge(
@@ -218,6 +234,28 @@ namespace XMLViewsTests
 			@"<layout>
 				<part ref='LexReferencesConfig' label='Lexical Relations' before='' after=' ' sep='; ' visibility='ifdata' param='publishStemSenseRef' css='relations' lexreltype='sense' extra='somevalue' reltypeseq='+b7862f14-ea5e-11de-8d47-0013722f8dec,-b7921ac2-ea5e-11de-880d-0013722f8dec' />
 				<part ref='LexReferencesConfig' label='Lexical Relations (1)' before='' after=' ' sep='; ' visibility='ifdata' param='publishStemSenseRef%01' css='relations' lexreltype='sense' extra='somevalue' reltypeseq='-b7862f14-ea5e-11de-8d47-0013722f8dec,-b7921ac2-ea5e-11de-880d-0013722f8dec' dup='1' />
+			</layout>",
+			string.Empty);
+		}
+
+		/// <summary>
+		/// LT-17178 Duplicates of child nodes do not appear when migrating from 8.2.4 to 8.3 build
+		/// </summary>
+		[Test]
+		public void SpecialAttrsOverridden_DuplicateLocationNodes()
+		{
+			TestMerge(
+			@"<layout>
+				<part ref='LocationConfig' label='Location' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation' />
+				<part ref='LocationConfig' label='Location (1)' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation%01' dup='1' />
+			</layout>",
+			@"<layout>
+				<part ref='LocationConfig' label='Location' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation%01' dup='1.0' />
+				<part ref='LocationConfig' label='Location (1)' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation%01' dup='1.0' />
+			</layout>",
+			@"<layout>
+				<part ref='LocationConfig' label='Location' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation%01' dup='1.0' />
+				<part ref='LocationConfig' label='Location (1)' before='' after=' ' visibility='ifdata' style='Dictionary-Contrasting' param='publishStemLocation%01' dup='1.0-1' />
 			</layout>",
 			string.Empty);
 		}

@@ -1,16 +1,11 @@
-// Copyright (c) 2008-2014 SIL International
+// Copyright (c) 2008-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File:  FwDirectoryFinderTests.cs
-// Responsibility: Eberhard Beilharz
 
 using System;
 using System.IO;
 using NUnit.Framework;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Test.TestUtils;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace SIL.FieldWorks.Common.FwUtils
 {
@@ -21,7 +16,7 @@ namespace SIL.FieldWorks.Common.FwUtils
 	/// </summary>
 	///-----------------------------------------------------------------------------------------
 	[TestFixture]
-	public class FwDirectoryFinderTests : BaseTest
+	public class FwDirectoryFinderTests
 	{
 		/// <summary>
 		/// Resets the registry helper

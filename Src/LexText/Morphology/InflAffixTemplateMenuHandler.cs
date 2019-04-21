@@ -1,24 +1,17 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: InflAffixTemplateMenuHandler.cs
-// Responsibility: Andy Black
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Xml;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.KernelInterfaces;
 using XCore;
-using SIL.Utils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Widgets;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks.MorphologyEditor
 {
@@ -27,7 +20,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 	/// When the user (or test code) issues commands, this class also invokes the corresponding methods on the
 	/// Inflectional Affix Template control.
 	/// </summary>
-	public class InflAffixTemplateMenuHandler : IxCoreColleague, IFWDisposable
+	public class InflAffixTemplateMenuHandler : IxCoreColleague, IDisposable
 	{
 		/// <summary>
 		/// Inflectiona Affix Template Control.
@@ -255,7 +248,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			return true;//we handled this, no need to ask anyone else.
 		}
 
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get
 			{
@@ -355,8 +348,6 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-				Justification="Dispose not used elsewhere for creating XCore.Command objects")]
 		internal virtual void HandleFwMenuSelection(object sender, EventArgs ea)
 		{
 			CheckDisposed();

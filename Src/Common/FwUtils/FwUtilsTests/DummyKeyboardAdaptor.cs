@@ -1,11 +1,16 @@
-﻿using SIL.Keyboarding;
+﻿// Copyright (c) 2017 SIL International
+// This software is licensed under the LGPL, version 2.1 or later
+// (http://www.gnu.org/licenses/lgpl-2.1.html)
+
+using System;
+using SIL.Keyboarding;
+using SIL.ObjectModel;
 using SIL.Windows.Forms.Keyboarding;
-using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.FwUtils
 {
 	/// <summary/>
-	public class DummyKeyboardAdaptor : FwDisposableBase, IKeyboardRetrievingAdaptor, IKeyboardSwitchingAdaptor
+	public class DummyKeyboardAdaptor : DisposableBase, IKeyboardRetrievingAdaptor, IKeyboardSwitchingAdaptor
 	{
 		private readonly KeyboardDescription m_defaultKeyboard;
 
@@ -56,10 +61,12 @@ namespace SIL.FieldWorks.Common.FwUtils
 		}
 
 		/// <summary/>
-		public string GetKeyboardSetupApplication(out string arguments)
+		public Action GetKeyboardSetupAction()
 		{
-			arguments = null;
-			return null;
+			return ()=>
+			{
+				throw new NotImplementedException();
+			};
 		}
 
 		/// <summary/>

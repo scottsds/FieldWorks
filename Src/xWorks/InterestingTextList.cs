@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -6,10 +6,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainImpl;
-using SIL.Utils;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.DomainImpl;
+using SIL.LCModel.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks
@@ -46,7 +47,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// Used by InvalidateRelatedSortSequences()
 		/// </summary>
-		public FdoCache Cache { get; set; }
+		public LcmCache Cache { get; set; }
 
 		public InterestingTextList(Mediator mediator, PropertyTable propertyTable, ITextRepository repo, IStTextRepository stTextRepo)
 			: this(mediator, propertyTable, repo, stTextRepo, true)
@@ -68,7 +69,7 @@ namespace SIL.FieldWorks.XWorks
 
 		private void GetCache()
 		{
-			Cache = m_propertyTable.GetValue<FdoCache>("cache");
+			Cache = m_propertyTable.GetValue<LcmCache>("cache");
 		}
 
 		private List<IStText> m_coreTexts;
@@ -345,14 +346,14 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		public static string MakeIdList(IEnumerable<ICmObject> objects)
 		{
-			return objects.ToString(",", obj => Convert.ToBase64String(obj.Guid.ToByteArray()));
+			return string.Join(",", objects.Select(obj => Convert.ToBase64String(obj.Guid.ToByteArray())));
 		}
 		/// <summary>
 		/// Make a string that corresponds to a list of guids.
 		/// </summary>
 		public static string MakeIdList(IEnumerable<Guid> objects)
 		{
-			return objects.ToString(",", guid => Convert.ToBase64String(guid.ToByteArray()));
+			return string.Join(",", objects.Select(guid => Convert.ToBase64String(guid.ToByteArray())));
 		}
 
 		/// <summary>
@@ -381,6 +382,7 @@ namespace SIL.FieldWorks.XWorks
 			UpdateExcludedCoreTexts(excludedGuids);
 			m_coreTexts = null;
 			m_interestingTests = null; // regenerate when next needed. (Before we raise changed, which may use it...)
+			IncludeScripture = m_scriptureTexts.Count > 0;
 			var newTexts = InterestingTexts.ToArray();
 			int firstChange = 0;
 			int minLength = Math.Min(oldTexts.Length, newTexts.Length);

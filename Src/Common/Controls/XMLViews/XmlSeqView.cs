@@ -15,12 +15,14 @@ using System.Drawing.Printing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
-using SIL.FieldWorks.FDO.Application;
+using SIL.LCModel;
+using SIL.LCModel.Utils;
+using SIL.LCModel.Application;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Controls
@@ -188,7 +190,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// Initializes a new instance of the <see cref="XmlSeqView"/> class.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		public XmlSeqView(FdoCache cache, int hvoRoot, int flid, XmlNode xnSpec, ISilDataAccessManaged sda, IApp app, ICmPossibility publication)
+		public XmlSeqView(LcmCache cache, int hvoRoot, int flid, XmlNode xnSpec, ISilDataAccessManaged sda, IApp app, ICmPossibility publication)
 			: base(null)
 		{
 			m_app = app;
@@ -307,13 +309,10 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			CheckDisposed();
 
-			base.MakeRoot();
-
-			if (m_fdoCache == null || DesignMode)
+			if (m_cache == null || DesignMode)
 				return;
 
-			IVwRootBox rootb = VwRootBoxClass.Create();
-			rootb.SetSite(this);
+			base.MakeRoot();
 
 			bool fEditable = XmlUtils.GetOptionalBooleanAttributeValue(m_xnSpec, "editable", true);
 			string toolName = m_propertyTable.GetStringProperty("currentContentControl", null);
@@ -327,21 +326,20 @@ namespace SIL.FieldWorks.Common.Controls
 			if (!String.IsNullOrEmpty(sProp))
 				sLayout = m_propertyTable.GetStringProperty(sProp, null);
 			if (String.IsNullOrEmpty(sLayout))
-				sLayout = XmlUtils.GetManditoryAttributeValue(m_xnSpec, "layout");
+				sLayout = XmlUtils.GetMandatoryAttributeValue(m_xnSpec, "layout");
 			ISilDataAccess sda = GetSda();
 			m_xmlVc = new XmlVc(sLayout, fEditable, this, m_app,
 				m_fShowFailingItems ? null : ItemDisplayCondition, sda) {IdentifySource = true};
 			ReadOnlyView = !fEditable;
 			if (!fEditable)
-				rootb.MaxParasToScan = 0;
-			m_xmlVc.Cache = m_fdoCache;
+				m_rootb.MaxParasToScan = 0;
+			m_xmlVc.Cache = m_cache;
 			m_xmlVc.MainSeqFlid = m_mainFlid;
 
-			rootb.DataAccess = sda;
+			m_rootb.DataAccess = sda;
 			m_xmlVc.DataAccess = sda;
 
-			rootb.SetRootObject(m_hvoRoot, m_xmlVc, RootFrag, m_styleSheet);
-			m_rootb = rootb;
+			m_rootb.SetRootObject(m_hvoRoot, m_xmlVc, RootFrag, m_styleSheet);
 		}
 
 		private ISilDataAccess GetSda()
@@ -563,8 +561,8 @@ namespace SIL.FieldWorks.Common.Controls
 
 	class XmlSeqSelectionRestorer: SelectionRestorer
 	{
-		private FdoCache Cache { get; set; }
-		public XmlSeqSelectionRestorer(SimpleRootSite rootSite, FdoCache cache) : base(rootSite)
+		private LcmCache Cache { get; set; }
+		public XmlSeqSelectionRestorer(SimpleRootSite rootSite, LcmCache cache) : base(rootSite)
 		{
 			Cache = cache;
 		}
@@ -579,6 +577,7 @@ namespace SIL.FieldWorks.Common.Controls
 		protected override void Dispose(bool fDisposing)
 		{
 			Debug.WriteLineIf(!fDisposing, "****** Missing Dispose() call for " + GetType().Name + ". ****** ");
+			base.Dispose(fDisposing);
 			if (!fDisposing || IsDisposed || m_savedSelection == null || m_rootSite.RootBox.Height <= 0)
 				return;
 

@@ -1,16 +1,10 @@
 // Copyright (c) 2010-2013 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: NotebookImportWiz.cs
-// Responsibility: mcconnel
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -18,19 +12,22 @@ using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
-using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FwCoreDlgs.BackupRestore;
 using SIL.FieldWorks.Resources;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using SilEncConverters40;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls.DataNotebook
@@ -52,12 +49,12 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 		const int kstepCharacterMapping = 6;
 		const int kstepFinal = 7;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private IFwMetaDataCacheManaged m_mdc;
 		private IVwStylesheet m_stylesheet;
 		private Mediator m_mediator;
 		private WritingSystemManager m_wsManager;
-		private XCore.PropertyTable m_propertyTable;
+		private PropertyTable m_propertyTable;
 		private IStTextFactory m_factStText;
 		private IStTextRepository m_repoStText;
 		private IStTxtParaFactory m_factPara;
@@ -438,7 +435,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			/// Constructor using an XmlNode from the settings file.
 			/// </summary>
 			public EncConverterChoice(XmlNode xnConverter, WritingSystemManager wsManager)
-				: this(XmlUtils.GetManditoryAttributeValue(xnConverter, "ws"),
+				: this(XmlUtils.GetMandatoryAttributeValue(xnConverter, "ws"),
 				XmlUtils.GetOptionalAttributeValue(xnConverter, "converter", null), wsManager)
 			{
 			}
@@ -627,8 +624,8 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 
 			public CharMapping(XmlNode xn)
 			{
-				m_sBeginMkr = XmlUtils.GetManditoryAttributeValue(xn, "begin");
-				m_sEndMkr = XmlUtils.GetManditoryAttributeValue(xn, "end");
+				m_sBeginMkr = XmlUtils.GetMandatoryAttributeValue(xn, "begin");
+				m_sEndMkr = XmlUtils.GetMandatoryAttributeValue(xn, "end");
 				m_fEndWithWord = XmlUtils.GetOptionalBooleanAttributeValue(xn, "endWithWord", false);
 				m_fIgnoreMarker = XmlUtils.GetOptionalBooleanAttributeValue(xn, "ignore", false);
 				m_sDestStyle = XmlUtils.GetOptionalAttributeValue(xn, "style", null);
@@ -734,7 +731,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 		/// <summary>
 		/// Initialize the data values for this dialog.
 		/// </summary>
-		public void Init(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable)
+		public void Init(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable)
 		{
 			m_cache = cache;
 			m_mediator = mediator;
@@ -764,7 +761,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			m_stylesheet = AnthroStyleSheetFromPropertyTable(m_propertyTable);
 			if (m_stylesheet == null)
 			{
-				FwStyleSheet styles = new FwStyleSheet();
+				LcmStyleSheet styles = new LcmStyleSheet();
 				styles.Init(m_cache, m_cache.LangProject.Hvo, LangProjectTags.kflidStyles);
 				m_stylesheet = styles;
 			}
@@ -862,9 +859,9 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 				pi = mainWindow.GetType().GetProperty("AnthroStyleSheet");
 			if (pi != null)
 			{
-				return pi.GetValue(mainWindow, null) as FwStyleSheet;
+				return pi.GetValue(mainWindow, null) as LcmStyleSheet;
 			}
-			return propertyTable.GetValue<FwStyleSheet>("AnthroStyleSheet");
+			return propertyTable.GetValue<LcmStyleSheet>("AnthroStyleSheet");
 		}
 
 		private void FillLanguageMappingView()
@@ -888,7 +885,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			}
 			m_lvMappingLanguages.Sort();
 			IApp app = m_propertyTable.GetValue<IApp>("App");
-			m_btnAddWritingSystem.Initialize(m_cache, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), app, m_stylesheet, wss);
+			m_btnAddWritingSystem.Initialize(m_cache, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), app, wss);
 		}
 
 		private ListViewItem CreateListViewItemForWS(CoreWritingSystemDefinition ws)
@@ -1095,7 +1092,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 				RnSfMarker rsfm = lvi.Tag as RnSfMarker;
 				var app = m_propertyTable.GetValue<IApp>("App");
 				dlg.Initialize(m_cache, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), app, rsfm,
-					m_SfmFile, m_mapFlidName, m_stylesheet, m_mediator);
+					m_SfmFile, m_mapFlidName, m_stylesheet, m_mediator, m_propertyTable);
 				if (dlg.ShowDialog(this) == DialogResult.OK)
 				{
 					rsfm = dlg.Results;
@@ -2090,14 +2087,12 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			m_mapWsEncConv.Add(ecc.WritingSystem.Id, ecc);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void ReadMarkerSetting(XmlNode xnMarker)
 		{
 			try
 			{
 				RnSfMarker sfm = new RnSfMarker();
-				sfm.m_sMkr = XmlUtils.GetManditoryAttributeValue(xnMarker, "tag");
+				sfm.m_sMkr = XmlUtils.GetMandatoryAttributeValue(xnMarker, "tag");
 				sfm.m_flid = XmlUtils.GetMandatoryIntegerAttributeValue(xnMarker, "flid");
 				sfm.m_sMkrOverThis = XmlUtils.GetOptionalAttributeValue(xnMarker, "owner");
 				if (sfm.m_flid == 0)
@@ -2114,7 +2109,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 						case CellarPropertyType.GenDate:
 							foreach (XmlNode xn in xnMarker.SelectNodes("./DateFormat"))
 							{
-								string sFormat = XmlUtils.GetManditoryAttributeValue(xn, "value");
+								string sFormat = XmlUtils.GetMandatoryAttributeValue(xn, "value");
 								sfm.m_dto.m_rgsFmt.Add(sFormat);
 							}
 							break;
@@ -2166,7 +2161,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 						case CellarPropertyType.String:
 							foreach (XmlNode xn in xnMarker.SelectNodes("./StringWrtSys"))
 							{
-								sfm.m_sto.m_wsId = XmlUtils.GetManditoryAttributeValue(xn, "ws");
+								sfm.m_sto.m_wsId = XmlUtils.GetMandatoryAttributeValue(xn, "ws");
 							}
 							break;
 						// The following types do not occur in RnGenericRec fields.
@@ -2204,7 +2199,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 				switch (xn.Name)
 				{
 					case "Match":
-						string sMatch = XmlUtils.GetManditoryAttributeValue(xn, "value");
+						string sMatch = XmlUtils.GetMandatoryAttributeValue(xn, "value");
 						switch (sMatch)
 						{
 							case "abbr":
@@ -2225,35 +2220,35 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 							cpt == CellarPropertyType.OwningSequence)
 						{
 							sfm.m_tlo.m_fHaveMulti = true;
-							sfm.m_tlo.m_sDelimMulti = XmlUtils.GetManditoryAttributeValue(xn, "sep");
+							sfm.m_tlo.m_sDelimMulti = XmlUtils.GetMandatoryAttributeValue(xn, "sep");
 						}
 						break;
 					case "Subchoice":
 						sfm.m_tlo.m_fHaveSub = true;
-						sfm.m_tlo.m_sDelimSub = XmlUtils.GetManditoryAttributeValue(xn, "sep");
+						sfm.m_tlo.m_sDelimSub = XmlUtils.GetMandatoryAttributeValue(xn, "sep");
 						break;
 					case "Default":
-						sfm.m_tlo.m_sEmptyDefault = XmlUtils.GetManditoryAttributeValue(xn, "value");
+						sfm.m_tlo.m_sEmptyDefault = XmlUtils.GetMandatoryAttributeValue(xn, "value");
 						sfm.m_tlo.m_default = null;
 						break;
 					case "DelimitChoice":
 						sfm.m_tlo.m_fHaveBetween = true;
-						sfm.m_tlo.m_sMarkStart = XmlUtils.GetManditoryAttributeValue(xn, "start");
-						sfm.m_tlo.m_sMarkEnd = XmlUtils.GetManditoryAttributeValue(xn, "end");
+						sfm.m_tlo.m_sMarkStart = XmlUtils.GetMandatoryAttributeValue(xn, "start");
+						sfm.m_tlo.m_sMarkEnd = XmlUtils.GetMandatoryAttributeValue(xn, "end");
 						break;
 					case "StopChoices":
 						sfm.m_tlo.m_fHaveBefore = true;
-						sfm.m_tlo.m_sBefore = XmlUtils.GetManditoryAttributeValue(xn, "value");
+						sfm.m_tlo.m_sBefore = XmlUtils.GetMandatoryAttributeValue(xn, "value");
 						break;
 					case "IgnoreNewChoices":
 						sfm.m_tlo.m_fIgnoreNewStuff = XmlUtils.GetBooleanAttributeValue(xn, "value");
 						break;
 					case "MatchReplaceChoice":
-						sfm.m_tlo.m_rgsMatch.Add(XmlUtils.GetManditoryAttributeValue(xn, "match"));
+						sfm.m_tlo.m_rgsMatch.Add(XmlUtils.GetMandatoryAttributeValue(xn, "match"));
 						sfm.m_tlo.m_rgsReplace.Add(XmlUtils.GetOptionalAttributeValue(xn, "replace", String.Empty));
 						break;
 					case "ItemWrtSys":
-						sfm.m_tlo.m_wsId = XmlUtils.GetManditoryAttributeValue(xn, "ws");
+						sfm.m_tlo.m_wsId = XmlUtils.GetMandatoryAttributeValue(xn, "ws");
 						break;
 				}
 			}
@@ -2266,7 +2261,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 				switch (xn.Name)
 				{
 					case "TextStyle":
-						sfm.m_txo.m_sStyle = XmlUtils.GetManditoryAttributeValue(xn, "value");
+						sfm.m_txo.m_sStyle = XmlUtils.GetMandatoryAttributeValue(xn, "value");
 						break;
 					case "StartPara":
 						sfm.m_txo.m_fStartParaBlankLine = XmlUtils.GetOptionalBooleanAttributeValue(xn, "afterBlankLine", false);
@@ -2279,7 +2274,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 							Int32.TryParse(sLim, out sfm.m_txo.m_cchShortLim);
 						break;
 					case "DefaultParaWrtSys":
-						sfm.m_txo.m_wsId = XmlUtils.GetManditoryAttributeValue(xn, "ws");
+						sfm.m_txo.m_wsId = XmlUtils.GetMandatoryAttributeValue(xn, "ws");
 						break;
 				}
 			}
@@ -3288,7 +3283,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 				rgsText.Add(String.Empty);
 				rgcmText.Add(null);
 			}
-			ITsIncStrBldr tisb = m_cache.TsStrFactory.GetIncBldr();
+			ITsIncStrBldr tisb = TsStringUtils.MakeIncStrBldr();
 			for (int i = 0; i < rgsText.Count; ++i)
 			{
 				string sRun = rgsText[i];
@@ -4621,7 +4616,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			}
 		}
 
-		private static void FillPossibilityMap(RnSfMarker rsf, IFdoOwningSequence<ICmPossibility> seq,
+		private static void FillPossibilityMap(RnSfMarker rsf, ILcmOwningSequence<ICmPossibility> seq,
 			Dictionary<string, ICmPossibility> map)
 		{
 			if (seq == null || seq.Count == 0)
@@ -4644,7 +4639,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 
 		private ICmPossibility CreateNewPossibility(List<string> rgsHier,
 			CmPossibilityCreator factory,
-			IFdoOwningSequence<ICmPossibility> possList,
+			ILcmOwningSequence<ICmPossibility> possList,
 			Dictionary<string, ICmPossibility> map,
 			List<ICmPossibility> rgNew)
 		{
@@ -4680,7 +4675,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 					possList.Add(item);
 				else
 					itemParent.SubPossibilitiesOS.Add(item);
-				ITsString tss = m_cache.TsStrFactory.MakeString(rgsHier[i], m_cache.DefaultAnalWs);
+				ITsString tss = TsStringUtils.MakeString(rgsHier[i], m_cache.DefaultAnalWs);
 				item.Name.AnalysisDefaultWritingSystem = tss;
 				item.Abbreviation.AnalysisDefaultWritingSystem = tss;
 				map.Add(rgsHier[i].ToLowerInvariant(), item);
@@ -4690,14 +4685,14 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			return item;
 		}
 
-		public static bool InitializeWritingSystemCombo(string sWs, FdoCache cache, ComboBox cbWritingSystem)
+		public static bool InitializeWritingSystemCombo(string sWs, LcmCache cache, ComboBox cbWritingSystem)
 		{
 			return InitializeWritingSystemCombo(sWs, cache, cbWritingSystem,
 				cache.ServiceLocator.WritingSystems.AllWritingSystems.ToArray());
 		}
 
 
-		public static bool InitializeWritingSystemCombo(string sWs, FdoCache cache, ComboBox cbWritingSystem, CoreWritingSystemDefinition[] writingSystems)
+		public static bool InitializeWritingSystemCombo(string sWs, LcmCache cache, ComboBox cbWritingSystem, CoreWritingSystemDefinition[] writingSystems)
 		{
 			if (String.IsNullOrEmpty(sWs))
 				sWs = cache.WritingSystemFactory.GetStrFromWs(cache.DefaultAnalWs);

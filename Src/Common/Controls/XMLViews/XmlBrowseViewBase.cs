@@ -1,13 +1,7 @@
-// Copyright (c) 2005-2013 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: XmlBrowseViewBase.cs
-// Responsibility: Randy Regnier
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -15,13 +9,13 @@ using System.Xml;
 using System.Diagnostics;
 using SIL.FieldWorks.Common.Framework;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO.Application;
-using SIL.Utils;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel.Application;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel;
 using XCore;
 using SIL.FieldWorks.Common.FwUtils;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Controls
 {
@@ -1068,7 +1062,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="bv">The bv. Also used to set SortItemProvider</param>
 		/// ------------------------------------------------------------------------------------
 		public virtual void Init(XmlNode nodeSpec, int hvoRoot, int fakeFlid,
-			FdoCache cache, Mediator mediator, BrowseViewer bv)
+			LcmCache cache, Mediator mediator, BrowseViewer bv)
 		{
 			CheckDisposed();
 
@@ -1081,7 +1075,7 @@ namespace SIL.FieldWorks.Common.Controls
 				m_nodeSpec = nodeSpec;
 			m_bv = bv;
 			m_mediator = mediator;
-			m_fdoCache = cache;
+			m_cache = cache;
 			m_sda = m_bv.SpecialCache;
 			// This is usually done in MakeRoot, but we need it to exist right from the start
 			// because right after we make this window we use info from the VC to help make
@@ -1845,8 +1839,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// <param name="e"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "scrollBar is a reference")]
 		private bool DoMouseWheelVScroll(MouseEventArgs e)
 		{
 			if (m_bv == null)
@@ -1899,15 +1891,15 @@ namespace SIL.FieldWorks.Common.Controls
 		{
 			CheckDisposed();
 
-			if (m_fdoCache == null || DesignMode)
+			if (m_cache == null || DesignMode)
 				return;
 
-			m_rootb = VwRootBoxClass.Create();
-			m_rootb.SetSite(this);
+			base.MakeRoot();
+
 			// Only change it if it is null or different.
 			// Otherwise, it does an uneeded disposal/creation of the layout cache.
-			if (m_xbvvc.Cache == null || m_xbvvc.Cache != m_fdoCache)
-				m_xbvvc.Cache = m_fdoCache;
+			if (m_xbvvc.Cache == null || m_xbvvc.Cache != m_cache)
+				m_xbvvc.Cache = m_cache;
 			SetSelectedRowHighlighting();
 			this.ReadOnlyView = this.ReadOnlySelect;
 
@@ -1917,7 +1909,6 @@ namespace SIL.FieldWorks.Common.Controls
 			m_rootb.DataAccess = m_sda;
 
 			RootObjectHvo = m_hvoRoot;
-			base.MakeRoot();
 			m_bv.SpecialCache.AddNotification(this);
 			m_dxdLayoutWidth = kForceLayout; // Don't try to draw until we get OnSize and do layout.
 			// Filter bar uses info from our VC and can't fininish init until we make it.

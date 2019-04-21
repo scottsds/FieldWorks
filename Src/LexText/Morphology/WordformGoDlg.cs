@@ -2,15 +2,14 @@
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
-using System.Diagnostics.CodeAnalysis;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Widgets;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.FieldWorks.Common.Controls;
-using XCore;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.XWorks.MorphologyEditor
 {
@@ -46,9 +45,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 
 		#region Other methods
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "searchEngine is disposed by the mediator.")]
-		protected override void InitializeMatchingObjects(FdoCache cache)
+		protected override void InitializeMatchingObjects(LcmCache cache)
 		{
 			var xnWindow = m_propertyTable.GetValue<XmlNode>("WindowConfiguration");
 			var configNode = xnWindow.SelectSingleNode("controls/parameters/guicontrol[@id=\"WordformsBrowseView\"]/parameters");
@@ -62,7 +59,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			var wsObj = (CoreWritingSystemDefinition) m_cbWritingSystems.SelectedItem;
 			if (wsObj != null)
 			{
-				ITsString tssForm = m_tsf.MakeString(string.Empty, wsObj.Handle);
+				ITsString tssForm = TsStringUtils.EmptyString(wsObj.Handle);
 				var field = new SearchField(WfiWordformTags.kflidForm, tssForm);
 				m_matchingObjectsBrowser.SearchAsync(new[] { field });
 			}
@@ -98,7 +95,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			m_oldSearchKey = searchKey;
 			m_oldSearchWs = wsSelHvo;
 
-			ITsString tssForm = m_tsf.MakeString(form ?? string.Empty, vernWs);
+			ITsString tssForm = TsStringUtils.MakeString(form ?? string.Empty, vernWs);
 			var field = new SearchField(WfiWordformTags.kflidForm, tssForm);
 			m_matchingObjectsBrowser.SearchAsync(new[] { field });
 		}

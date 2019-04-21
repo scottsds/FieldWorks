@@ -4,7 +4,7 @@
 
 using System.Diagnostics;
 using System.Windows.Forms;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using XCore;
 using SIL.FieldWorks.LexText.Controls;
 
@@ -43,7 +43,7 @@ namespace SIL.FieldWorks.FdoUi
 			PartOfSpeechUi posUi = null;
 			using (MasterCategoryListDlg dlg = new MasterCategoryListDlg())
 			{
-				FdoCache cache = propertyTable.GetValue<FdoCache>("cache");
+				LcmCache cache = propertyTable.GetValue<LcmCache>("cache");
 				Debug.Assert(cache != null);
 				var newOwner = cache.ServiceLocator.GetInstance<IPartOfSpeechRepository>().GetObject(hvoOwner);
 				dlg.SetDlginfo(newOwner.OwningList, mediator, propertyTable, true, newOwner);
@@ -70,7 +70,7 @@ namespace SIL.FieldWorks.FdoUi
 			CheckDisposed();
 
 			Command command = (Command)commandObject;
-			string tool = Utils.XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "tool");
+			string tool = Utils.XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "tool");
 			string toolChoice = PropTable.GetStringProperty("currentContentControl", null);
 
 			if (tool == "posEdit" && toolChoice == "reversalToolReversalIndexPOS")

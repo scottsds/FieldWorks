@@ -7,14 +7,13 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Media;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO.DomainServices.BackupRestore;
+using SIL.LCModel.DomainServices.BackupRestore;
 using SIL.FieldWorks.Resources;
 using SIL.Reporting;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 {
@@ -586,7 +585,7 @@ namespace SIL.FieldWorks.FwCoreDlgs.BackupRestore
 		/// ------------------------------------------------------------------------------------
 		protected virtual void IssueBeep()
 		{
-			SystemSounds.Beep.Play();
+			FwUtils.ErrorBeep();
 		}
 
 		#endregion

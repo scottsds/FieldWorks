@@ -5,10 +5,10 @@
 using System;
 using System.Resources;
 using System.Collections.Generic;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using System.Drawing;
 using System.Text;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using System.Reflection;
 
 namespace SIL.FieldWorks.Resources
@@ -64,7 +64,7 @@ namespace SIL.FieldWorks.Resources
 		AllImage,
 		/// <summary>*.wav, *.snd, *.au, *.aif, *.aifc, *.aiff, *.wma, *.mp3</summary>
 		AllAudio,
-		/// <summary>*.avi, *.wmv, *.wvx, *.mpeg, *.mpg, *.mpe, *.m1v, *.mp2, *.mpv2, *.mpa</summary>
+		/// <summary>*.mp4, *.avi, *.wmv, *.wvx, *.mpeg, *.mpg, *.mpe, *.m1v, *.mp2, *.mpv2, *.mpa</summary>
 		AllVideo,
 		/// <summary>Lift (*.lift)</summary>
 		LIFT,
@@ -148,7 +148,7 @@ namespace SIL.FieldWorks.Resources
 			s_fileFilterExtensions[FileFilterType.AllCCTable] = "*.cc; *.cct";
 			s_fileFilterExtensions[FileFilterType.AllImage] = "*.bmp; *.jpg; *.jpeg; *.gif; *.png; *.tif; *.tiff; *.ico; *.wmf; *.pcx; *.cgm";
 			s_fileFilterExtensions[FileFilterType.AllAudio] = "*.wav; *.snd; *.au; *.aif; *.aifc; *.aiff; *.wma; *.mp3";
-			s_fileFilterExtensions[FileFilterType.AllVideo] = "*.avi; *.wmv; *.wvx; *.mpeg; *.mpg; *.mpe; *.m1v; *.mp2; *.mpv2; *.mpa";
+			s_fileFilterExtensions[FileFilterType.AllVideo] = "*.mp4; *.avi; *.wmv; *.wvx; *.mpeg; *.mpg; *.mpe; *.m1v; *.mp2; *.mpv2; *.mpa";
 			s_fileFilterExtensions[FileFilterType.LIFT] = "*" + FwFileExtensions.ksLexiconInterchangeFormat;
 			s_fileFilterExtensions[FileFilterType.AllShoeboxDictionaryDatabases] = "*.mdf; *.di; *.dic; *.db; *.sfm; *.sf";
 			s_fileFilterExtensions[FileFilterType.ToolboxLanguageFiles] = "*.lng";
@@ -156,10 +156,10 @@ namespace SIL.FieldWorks.Resources
 			s_fileFilterExtensions[FileFilterType.ShoeboxAnthropologyDatabase] = "*.db; *.sfm; *.sf";
 			s_fileFilterExtensions[FileFilterType.InterlinearSfm] = "*.db; *.sfm; *.sf; *.it; *.itx; *.txt";
 			s_fileFilterExtensions[FileFilterType.ShoeboxProjectFiles] = "*.prj";
-			s_fileFilterExtensions[FileFilterType.FieldWorksProjectFiles] = "*" + FdoFileHelper.ksFwDataXmlFileExtension;
-			s_fileFilterExtensions[FileFilterType.FieldWorksBackupFiles] = "*" + FdoFileHelper.ksFwBackupFileExtension;
-			s_fileFilterExtensions[FileFilterType.FieldWorksAllBackupFiles] = String.Format("*{0}; *{1}; *.xml",
-				FdoFileHelper.ksFwBackupFileExtension, FdoFileHelper.ksFw60BackupFileExtension);
+			s_fileFilterExtensions[FileFilterType.FieldWorksProjectFiles] = "*" + LcmFileHelper.ksFwDataXmlFileExtension;
+			s_fileFilterExtensions[FileFilterType.FieldWorksBackupFiles] = "*" + LcmFileHelper.ksFwBackupFileExtension;
+			s_fileFilterExtensions[FileFilterType.FieldWorksAllBackupFiles] = string.Format("*{0}; *{1}; *.xml",
+				LcmFileHelper.ksFwBackupFileExtension, LcmFileHelper.ksFw60BackupFileExtension);
 			s_fileFilterExtensions[FileFilterType.FieldWorksTranslatedLists] = "*.xml; *.zip";
 			s_fileFilterExtensions[FileFilterType.OXEKT] = "*" + FwFileExtensions.ksOpenXmlForExchangingKeyTerms;
 			s_fileFilterExtensions[FileFilterType.FLExText] = "*" + FwFileExtensions.ksFLexText;

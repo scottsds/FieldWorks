@@ -3,7 +3,6 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Xml.Xsl;
 using System.IO;
@@ -11,12 +10,14 @@ using System.Xml;
 using System.Windows.Forms;
 using ICSharpCode.SharpZipLib.Zip;
 using SIL.FieldWorks.Common.Controls;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using XCore;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.XWorks;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.FieldWorks.Common.RootSites;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.IText
 {
@@ -28,17 +29,15 @@ namespace SIL.FieldWorks.IText
 		private List<XmlNode> m_ddNodes = new List<XmlNode>(8); // Saves XML nodes used to configure items.
 		ICmObject m_objRoot;
 		InterlinVc m_vc;
-		FDO.IText m_text;
+		LCModel.IText m_text;
 		List<ICmObject> m_objs = new List<ICmObject>();
 		private event EventHandler OnLaunchFilterScrScriptureSectionsDialog;
-		private IBookImporter m_bookImporter;
 
-		public InterlinearExportDialog(Mediator mediator, PropertyTable propertyTable, ICmObject objRoot, InterlinVc vc, IBookImporter bookImporter)
+		public InterlinearExportDialog(Mediator mediator, PropertyTable propertyTable, ICmObject objRoot, InterlinVc vc)
 			: base(mediator, propertyTable)
 		{
 			m_objRoot = objRoot;
 			m_vc = vc;
-			m_bookImporter = bookImporter;
 
 			m_helpTopic = "khtpExportInterlinear";
 			columnHeader1.Text = ITextStrings.ksFormat;
@@ -90,29 +89,18 @@ namespace SIL.FieldWorks.IText
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="args"></param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Gendarme is just too dumb to understand the try...finally pattern to ensure disposal of dlg")]
 		private void LaunchFilterTextsDialog(object sender, EventArgs args)
 		{
-			IFilterTextsDialog<IStText> dlg = null;
-			try
+			var interestingTextsList = InterestingTextsDecorator.GetInterestingTextList(m_mediator, m_propertyTable, m_cache.ServiceLocator);
+			var textsToChooseFrom = new List<IStText>(interestingTextsList.InterestingTexts);
+			var isOkToDisplayScripture = m_cache.ServiceLocator.GetInstance<IScrBookRepository>().AllInstances().Any();
+			if (!isOkToDisplayScripture)
+			{   // Mustn't show any Scripture, so remove scripture from the list
+				textsToChooseFrom = textsToChooseFrom.Where(text => !ScriptureServices.ScriptureIsResponsibleFor(text)).ToList();
+			}
+			var interestingTexts = textsToChooseFrom.ToArray();
+			using (var dlg = new FilterTextsDialog(m_propertyTable.GetValue<IApp>("App"), m_cache, interestingTexts, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider")))
 			{
-				var interestingTextsList = InterestingTextsDecorator.GetInterestingTextList(m_mediator, m_propertyTable, m_cache.ServiceLocator);
-				var textsToChooseFrom = new List<IStText>(interestingTextsList.InterestingTexts);
-				var isOkToDisplayScripture = m_cache.ServiceLocator.GetInstance<IScrBookRepository>().AllInstances().Any();
-				if (!isOkToDisplayScripture)
-				{   // Mustn't show any Scripture, so remove scripture from the list
-					textsToChooseFrom = textsToChooseFrom.Where(text => !ScriptureServices.ScriptureIsResponsibleFor(text)).ToList();
-				}
-				var interestingTexts = textsToChooseFrom.ToArray();
-				if (isOkToDisplayScripture)
-				{
-					dlg = new FilterTextsDialogTE(m_cache, interestingTexts, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), m_bookImporter);
-				}
-				else
-				{
-					dlg = new FilterTextsDialog(m_cache, interestingTexts, m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"));
-				}
 				// LT-12181: Was 'PruneToSelectedTexts(text) and most others were deleted.
 				// We want 'PruneToInterestingTextsAndSelect(interestingTexts, selectedText)'
 				dlg.PruneToInterestingTextsAndSelect(interestingTexts, (IStText)m_objRoot);
@@ -120,15 +108,9 @@ namespace SIL.FieldWorks.IText
 				if (dlg.ShowDialog(this) == DialogResult.OK)
 					m_objs.AddRange(dlg.GetListOfIncludedTexts());
 			}
-			finally
-			{
-				if (dlg != null)
-					((IDisposable)dlg).Dispose();
-			}
 		}
 
 		/// <summary>Export the data according to specifications.</summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule", Justification = "Using using")]
 		protected override void DoExport(string outPath)
 		{
 			using (var dlg = new ProgressDialogWithTask(this) { IsIndeterminate = true, AllowCancel = false, Message = ITextStrings.ksExporting_ })

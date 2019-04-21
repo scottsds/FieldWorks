@@ -1,21 +1,16 @@
 // Copyright (c) 2003-2013 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: FxApp.cs
-// Responsibility:
-// --------------------------------------------------------------------------------------------
-using System.Diagnostics.CodeAnalysis;
+
 using System.Windows.Forms;
 using System.Diagnostics;
 using Microsoft.Win32;
 using System.Collections.Generic;
 using System.IO;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Framework;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Common.FwUtils;
-using XCore;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -151,6 +146,11 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
+		/// <summary>
+		/// Gets the classname used for setting the WM_CLASS on Linux
+		/// </summary>
+		public abstract string WindowClassName { get; }
+
 		#endregion // Properties
 
 		#region Construction and Initializing
@@ -226,8 +226,6 @@ namespace SIL.FieldWorks.XWorks
 		/// The RegistryKey for this application.
 		/// </summary>
 		///***********************************************************************************
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "We're returning an object")]
 		public override RegistryKey SettingsKey
 		{
 			get

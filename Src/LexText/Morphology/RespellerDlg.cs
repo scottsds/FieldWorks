@@ -1,9 +1,7 @@
-// Copyright (c) 2009-2013 SIL International
+// Copyright (c) 2009-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: RespellerDlg.cs
-// Responsibility: FW Team
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -11,20 +9,22 @@ using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
 using System.Diagnostics;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.SpellChecking;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.IText;
 using XCore;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
-using SIL.Utils;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Drawing;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Resources;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Application;
+using SIL.LCModel.Infrastructure;
 
 namespace SIL.FieldWorks.XWorks.MorphologyEditor
 {
@@ -33,7 +33,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		private Mediator m_mediator;
 		private PropertyTable m_propertyTable;
 		private bool m_fDisposeMediator;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private XMLViewsDataCache m_specialSda;
 		private IWfiWordform m_srcwfiWordform;
 		private int m_vernWs;
@@ -162,7 +162,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 				m_cbCopyAnalyses.Click += m_cbCopyAnalyses_Click;
 				m_cbMaintainCase.Checked = m_propertyTable.GetBoolProperty("MaintainCaseOnChangeSpelling", true);
 				m_cbMaintainCase.Click += m_cbMaintainCase_Click;
-				m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+				m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 
 				// We need to use the 'best vern' ws,
 				// since that is what is showing in the Words-Analyses detail edit control.
@@ -519,6 +519,8 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 
 		private void m_btnClose_Click(object sender, EventArgs e)
 		{
+			if (ChangesWereMade)
+				m_mediator.SendMessage("MasterRefresh", null);
 			Close();
 		}
 
@@ -603,8 +605,8 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// <returns></returns>
 		private bool AllWillChange(out bool someWillChange)
 		{
-			var checkedItems = new Set<int>(m_sourceSentences.CheckedItems);
-			var changeCount = checkedItems.Intersection(m_enabledItems).Count;
+			var checkedItems = new HashSet<int>(m_sourceSentences.CheckedItems);
+			int changeCount = checkedItems.Intersect(m_enabledItems).Count();
 			someWillChange = changeCount > 0;
 			return changeCount == m_enabledItems.Count && !m_fOtherOccurrencesExist;
 		}
@@ -763,6 +765,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// </summary>
 		/// <param name="fMakeChangeNow">if set to <c>true</c> make the actual change now;
 		/// otherwise, just figure out what the new contents will be.</param>
+		/// <param name="progress"></param>
 		/// ------------------------------------------------------------------------------------
 		public void MakeNewContents(bool fMakeChangeNow, ProgressDialogWorkingOn progress)
 		{
@@ -868,14 +871,14 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		// The spelling change
 		private readonly string m_oldSpelling;
 		private readonly string m_newSpelling;
-		readonly Set<int> m_changes = new Set<int>(); // CBAs that represent occurrences we will change.
+		private readonly HashSet<int> m_changes = new HashSet<int>(); // CBAs that represent occurrences we will change.
 		/// <summary>
 		/// Key is hvo of StTxtPara, value is list (eventually sorted by BeginOffset) of
 		/// CBAs that refer to it AND ARE BEING CHANGED.
 		/// </summary>
 		readonly Dictionary<int, ParaChangeInfo> m_changedParas = new Dictionary<int, ParaChangeInfo>();
 		readonly XMLViewsDataCache m_specialSda;
-		readonly FdoCache m_cache;
+		readonly LcmCache m_cache;
 		IEnumerable<int> m_occurrences; // items requiring preview.
 		bool m_fPreserveCase;
 		bool m_fUpdateLexicalEntries;
@@ -909,10 +912,6 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// </summary>
 		internal int OldWordform { get; private set; }
 
-		// These preserve the old spelling-dictionary status for Undo.
-		bool m_fWasOldSpellingCorrect = false;
-		bool m_fWasNewSpellingCorrect = false;
-
 		// Info to support efficient Undo/Redo for large lists of changes.
 		//readonly List<int> m_hvosToChangeIntProps = new List<int>(); // objects with integer props needing change
 		//readonly List<int> m_tagsToChangeIntProps = new List<int>(); // tags of the properties
@@ -929,10 +928,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// <summary>
 		/// Used in tests only at present, assumes default vernacular WS.
 		/// </summary>
-		/// <param name="cache"></param>
-		/// <param name="oldSpelling"></param>
-		/// <param name="newSpelling"></param>
-		internal RespellUndoAction(XMLViewsDataCache sda, FdoCache cache, string oldSpelling, string newSpelling)
+		internal RespellUndoAction(XMLViewsDataCache sda, LcmCache cache, string oldSpelling, string newSpelling)
 			:this(sda, cache, cache.DefaultVernWs, oldSpelling, newSpelling)
 		{
 		}
@@ -1030,7 +1026,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// <summary>
 		/// Normal constructor
 		/// </summary>
-		internal RespellUndoAction(XMLViewsDataCache sda, FdoCache cache, int vernWs,
+		internal RespellUndoAction(XMLViewsDataCache sda, LcmCache cache, int vernWs,
 			string oldSpelling, string newSpelling)
 		{
 			m_specialSda = sda;
@@ -1506,6 +1502,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 				{
 					mediator.SendMessage("ItemDataModified", wfOld);
 				}
+
 				mediator.SendMessage("ItemDataModified", wfNew);
 
 				uuow.RollBack = false;
@@ -1515,26 +1512,24 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		private IWfiWordform FindOrCreateWordform(string sForm, int wsForm)
 		{
 			return RepoWf.GetMatchingWordform(wsForm, sForm) ??
-				FactWf.Create(m_cache.TsStrFactory.MakeString(sForm, wsForm));
+				FactWf.Create(TsStringUtils.MakeString(sForm, wsForm));
 		}
 
 		private void SetOldOccurrencesOfWordforms(int flidOccurrences, IWfiWordform wfOld, IWfiWordform wfNew)
 		{
 			OldWordform = wfOld.Hvo;
-			m_oldOccurrencesOldWf = m_specialSda.VecProp(wfOld.Hvo, flidOccurrences);
-			m_fWasOldSpellingCorrect = wfOld.SpellingStatus == (int)SpellingStatusStates.correct;
+			m_oldOccurrencesOldWf = m_specialSda.VecProp(wfOld.Hvo, flidOccurrences);;
 
 			NewWordform = wfNew.Hvo;
 			m_oldOccurrencesNewWf = m_specialSda.VecProp(wfNew.Hvo, flidOccurrences);
-			m_fWasNewSpellingCorrect = wfNew.SpellingStatus == (int)SpellingStatusStates.correct;
 		}
 
 		private void SetNewOccurrencesOfWordforms(ProgressDialogWorkingOn progress)
 		{
-			Set<int> changes = new Set<int>();
+			var changes = new HashSet<int>();
 			foreach (ParaChangeInfo info in m_changedParas.Values)
 			{
-				changes.AddRange(info.Changes);
+				changes.UnionWith(info.Changes);
 			}
 			if (AllChanged)
 			{
@@ -1878,7 +1873,6 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// <summary>
 		/// Remove all changed items from the set of enabled ones.
 		/// </summary>
-		/// <param name="enabledItems"></param>
 		internal void RemoveChangedItems(HashSet<int> enabledItems, int tagEnabled)
 		{
 			foreach (var info in m_changedParas.Values)
@@ -1929,7 +1923,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		Dictionary<int, RespellInfo> m_mapRespell = new Dictionary<int, RespellInfo>();
 
 		public RespellingSda(ISilDataAccessManaged domainDataByFlid, XmlNode configurationNode,
-			IFdoServiceLocator services)
+			ILcmServiceLocator services)
 			: base(domainDataByFlid, configurationNode, services)
 		{
 			SetOverrideMdc(new RespellingMdc(MetaDataCache as IFwMetaDataCacheManaged));
@@ -2115,7 +2109,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 							continue; // bizarre, just for defensiveness.
 						var picture = (ICmPicture) obj;
 						var caption = picture.Caption.get_String(Cache.DefaultVernWs);
-						var wordMaker = new WordMaker(caption, Cache.LanguageWritingSystemFactoryAccessor);
+						var wordMaker = new WordMaker(caption, Cache.ServiceLocator.WritingSystemManager);
 						for (; ; )
 						{
 							int ichMin;
@@ -2146,9 +2140,9 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			}
 		}
 
-		FdoCache Cache { set; get; }
+		LcmCache Cache { set; get; }
 
-		public void SetCache(FdoCache cache)
+		public void SetCache(LcmCache cache)
 		{
 			Cache = cache;
 		}

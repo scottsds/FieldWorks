@@ -1,27 +1,20 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: SliceFactory.cs
-// Responsibility: WordWorks
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Xml;
 using System.IO;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.FdoUi;
-using SIL.Utils;
 using SIL.FieldWorks.Common.Controls;
 using XCore;
 using SIL.FieldWorks.Common.FwUtils;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
 {
@@ -33,12 +26,12 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// If not found, answer 0.
 		/// If found, answer the ID of the appropriate writing system, or throw exception if not valid.
 		/// </summary>
-		private static int GetWs(FdoCache cache, PropertyTable propertyTable, XmlNode node)
+		private static int GetWs(LcmCache cache, PropertyTable propertyTable, XmlNode node)
 		{
 			return GetWs(cache, propertyTable, node, "ws");
 		}
 
-		private static int GetWs(FdoCache cache, PropertyTable propertyTable, XmlNode node, string sAttr)
+		private static int GetWs(LcmCache cache, PropertyTable propertyTable, XmlNode node, string sAttr)
 		{
 			string wsSpec = XmlUtils.GetOptionalAttributeValue(node, sAttr);
 			if (wsSpec != null)
@@ -83,9 +76,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		/// <summary></summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
-		public static Slice Create(FdoCache cache, string editor, int flid, XmlNode node, ICmObject obj,
+		public static Slice Create(LcmCache cache, string editor, int flid, XmlNode node, ICmObject obj,
 			IPersistenceProvider persistenceProvider, Mediator mediator, PropertyTable propertyTable, XmlNode caller, ObjSeqHashMap reuseMap)
 		{
 			Slice slice;
@@ -179,7 +170,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				{
 					string layout = XmlUtils.GetOptionalAttributeValue(caller, "param");
 					if (layout == null)
-						layout = XmlUtils.GetManditoryAttributeValue(node, "layout");
+						layout = XmlUtils.GetMandatoryAttributeValue(node, "layout");
 					// Editable if BOTH the caller (part ref) AND the node itself (the slice) say so...or at least if neither says not.
 					bool editable = XmlUtils.GetOptionalBooleanAttributeValue(caller, "editable", true)
 						&& XmlUtils.GetOptionalBooleanAttributeValue(node, "editable", true);
@@ -213,7 +204,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				}
 				case "lit": // was "message"
 				{
-					string message = XmlUtils.GetManditoryAttributeValue(node, "message");
+					string message = XmlUtils.GetMandatoryAttributeValue(node, "message");
 					string sTranslate = XmlUtils.GetOptionalAttributeValue(node, "translate", "");
 					if (sTranslate.Trim().ToLower() != "do not translate")
 						message = StringTable.Table.LocalizeLiteralValue(message);
@@ -229,7 +220,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				{
 					try
 					{
-						slice = new ImageSlice(FwDirectoryFinder.CodeDirectory, XmlUtils.GetManditoryAttributeValue(node, "param1"));
+						slice = new ImageSlice(FwDirectoryFinder.CodeDirectory, XmlUtils.GetMandatoryAttributeValue(node, "param1"));
 					}
 					catch (Exception error)
 					{
@@ -355,7 +346,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 					// case "integer": // added back in to behave as "int" above
 					throw new Exception("use of obsolete editor type (message->lit, integer->int)");
 				case "autocustom":
-					slice = MakeAutoCustomSlice(cache, obj, caller);
+					slice = MakeAutoCustomSlice(cache, obj, caller, node);
 					if (slice == null)
 						return null;
 					break;
@@ -392,13 +383,11 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		/// <summary>
 		/// This is invoked when a generated part ref (<part ref="Custom" param="fieldName"/>)
-		/// invokes the standard slice (<slice editor="autoCustom".../>). It comes up with the
+		/// invokes the standard slice (<slice editor="autoCustom" />). It comes up with the
 		/// appropriate default slice for the custom field indicated in the param attribute of
 		/// the caller.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
-		static Slice MakeAutoCustomSlice(FdoCache cache, ICmObject obj, XmlNode caller)
+		static Slice MakeAutoCustomSlice(LcmCache cache, ICmObject obj, XmlNode caller, XmlNode configurationNode)
 		{
 			IFwMetaDataCache mdc = cache.DomainDataByFlid.MetaDataCache;
 			int flid = GetCustomFieldFlid(caller, mdc, obj);
@@ -453,6 +442,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				case CellarPropertyType.ReferenceCollection:
 				case CellarPropertyType.ReferenceSequence:
 					slice = new ReferenceVectorSlice(cache, obj, flid);
+					SetConfigurationDisplayPropertyIfNeeded(configurationNode, obj, flid, cache.MainCacheAccessor, cache.LangProject.Services, cache.MetaDataCacheAccessor);
 					break;
 			}
 			if (slice == null)
@@ -461,9 +451,98 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return slice;
 		}
 
+		/// <summary>
+		/// Set configuration displayProperty from cmObjectCustomFieldFlid set elements' OwningList DisplayOption.
+		///
+		/// If cmObjectCustomFieldFlid refers to a set of elements (in cmObject), then examine the setting on the owning list of the
+		/// elements to determine which property of each element to use when
+		/// displaying each element in a slice, and record that information in configurationNode. This information is used
+		/// in DetailControls.VectorReferenceVc.Display().
+		/// Addresses LT-15705.
+		/// </summary>
+		internal static void SetConfigurationDisplayPropertyIfNeeded(XmlNode configurationNode, ICmObject cmObject,
+			int cmObjectCustomFieldFlid, ISilDataAccess mainCacheAccessor, ILcmServiceLocator fdoServiceLocator,
+			IFwMetaDataCache metadataCache)
+		{
+			var fieldType = metadataCache.GetFieldType(cmObjectCustomFieldFlid);
+
+			if (!(fieldType == (int)CellarPropertyType.ReferenceCollection ||
+				fieldType == (int)CellarPropertyType.OwningCollection ||
+				fieldType == (int)CellarPropertyType.ReferenceSequence ||
+				fieldType == (int)CellarPropertyType.OwningSequence))
+			{
+				return;
+			}
+
+			var element = FetchFirstElementFromSet(cmObject, cmObjectCustomFieldFlid, mainCacheAccessor, fdoServiceLocator);
+			if (element == null)
+				return;
+
+			var displayOption = element.OwningList.DisplayOption;
+			string propertyNameToGetAndShow = null;
+			switch ((PossNameType)displayOption)
+			{
+				case PossNameType.kpntName:
+					propertyNameToGetAndShow = "ShortNameTSS";
+					break;
+				case PossNameType.kpntNameAndAbbrev:
+					propertyNameToGetAndShow = "AbbrAndNameTSS";
+					break;
+				case PossNameType.kpntAbbreviation:
+					propertyNameToGetAndShow = "AbbrevHierarchyString";
+					break;
+				default:
+					break;
+			}
+			if (propertyNameToGetAndShow == null)
+				return;
+
+			SetDisplayPropertyInXMLConfiguration(configurationNode, propertyNameToGetAndShow);
+		}
+
+		/// <summary>
+		/// Edit or build XML in configurationNode to set displayProperty to displayPropertyValue.
+		/// Just update an existing deParams node's displayProperty attribute if there is one already.
+		/// </summary>
+		private static void SetDisplayPropertyInXMLConfiguration(XmlNode configurationNode, string displayPropertyValue)
+		{
+			var displayPropertyAttribute = configurationNode.OwnerDocument.CreateNode(XmlNodeType.Attribute, "displayProperty", "");
+			displayPropertyAttribute.Value = displayPropertyValue;
+
+			if (configurationNode["deParams"] == null)
+			{
+				var deParamsNode = configurationNode.OwnerDocument.CreateNode(XmlNodeType.Element, "deParams", "");
+				deParamsNode.Attributes.SetNamedItem(displayPropertyAttribute);
+				configurationNode.AppendChild(deParamsNode);
+				return;
+			}
+
+			if (configurationNode["deParams"].Attributes["displayProperty"] == null)
+			{
+				configurationNode["deParams"].Attributes.SetNamedItem(displayPropertyAttribute);
+				return;
+			}
+
+			configurationNode["deParams"].Attributes["displayProperty"].Value = displayPropertyValue;
+		}
+
+		/// <summary>
+		/// For a set of elements in cmObject that are referred to by setFlid, return the first element, or null.
+		/// </summary>
+		private static ICmPossibility FetchFirstElementFromSet(ICmObject cmObject, int setFlid, ISilDataAccess mainCacheAccessor,
+			ILcmServiceLocator fdoServiceLocator)
+		{
+			var elementCount = mainCacheAccessor.get_VecSize(cmObject.Hvo, setFlid);
+			if (elementCount == 0)
+				return null;
+
+			var firstElementHvo = mainCacheAccessor.get_VecItem(cmObject.Hvo, setFlid, 0);
+			return fdoServiceLocator.GetObject(firstElementHvo) as ICmPossibility;
+		}
+
 		static internal int GetCustomFieldFlid(XmlNode caller, IFwMetaDataCache mdc, ICmObject obj)
 		{
-			string fieldName = XmlUtils.GetManditoryAttributeValue(caller, "param");
+			string fieldName = XmlUtils.GetMandatoryAttributeValue(caller, "param");
 			// It would be nice to avoid all the possible throws for invalid fields, but hard
 			// to achieve in a static method.
 			try

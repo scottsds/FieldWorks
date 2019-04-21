@@ -1,26 +1,26 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: FwNewLangProject.cs
-// Responsibility: TE Team
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Drawing;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Resources;
 using SIL.Reporting;
-using SIL.Utils;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -29,7 +29,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 	/// FwNewLangProject dialog.
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	public class FwNewLangProject : Form, IFWDisposable
+	public class FwNewLangProject : Form
 	{
 		#region Data members
 		private bool m_fIgnoreClose;
@@ -151,30 +151,32 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			AccessibleName = GetType().Name;
 			m_useMemoryWSManager = useMemoryWSManager;
 			m_wsManager = m_useMemoryWSManager ? new WritingSystemManager() : new WritingSystemManager(SingletonsContainer.Get<CoreGlobalWritingSystemRepository>());
-#if __MonoCS__
-			FixLabelFont(m_lblTip);
-			FixLabelFont(m_lblAnalysisWrtSys);
-			FixLabelFont(m_lblVernacularWrtSys);
-			FixLabelFont(m_lblProjectName);
-			FixLabelFont(m_lblSpecifyWrtSys);
-#endif
+
+			if (Platform.IsMono)
+			{
+				FixLabelFont(m_lblTip);
+				FixLabelFont(m_lblAnalysisWrtSys);
+				FixLabelFont(m_lblVernacularWrtSys);
+				FixLabelFont(m_lblProjectName);
+				FixLabelFont(m_lblSpecifyWrtSys);
+			}
 		}
 
-#if __MonoCS__
 		/// <summary>
 		/// Fix the label font for Linux/Mono.  Without this fix, the label may
 		/// still show boxes for Chinese characters when the rest of the UI is
 		/// properly showing Chinese characters.
 		/// </summary>
 		/// <param name="lbl">Label</param>
+		/// <remarks>Method is only used on Linux</remarks>
 		private void FixLabelFont(Label lbl)
 		{
+			Debug.Assert(Platform.IsMono, "Not needed on Windows");
 			using (var oldFont = lbl.Font)
 			{
 				lbl.Font = new Font("Sans", oldFont.Size, oldFont.Style, oldFont.Unit);
 			}
 		}
-#endif
 
 		/// <summary>
 		/// Check to see if the object has been disposed.
@@ -531,7 +533,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					{
 						case DialogResult.OK:
 							m_fCreateNew = false;
-							m_dbFile = Path.Combine(FwDirectoryFinder.FdoDirectories.ProjectsDirectory, ProjectName + FdoFileHelper.ksFwDataXmlFileExtension);
+							m_dbFile = Path.Combine(FwDirectoryFinder.ProjectsDirectory,
+								ProjectName + LcmFileHelper.ksFwDataXmlFileExtension);
 							break;
 						case DialogResult.Cancel:
 							Enabled = true;
@@ -663,8 +666,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 						using (var threadHelper = new ThreadHelper())
 						{
 
-							m_dbFile = (string)progressDlg.RunTask(DisplayUi, FdoCache.CreateNewLangProj,
-																	ProjectName, FwDirectoryFinder.FdoDirectories, threadHelper, m_cbAnalWrtSys.SelectedItem,
+							m_dbFile = (string)progressDlg.RunTask(DisplayUi, LcmCache.CreateNewLangProj,
+																	ProjectName, FwDirectoryFinder.LcmDirectories, threadHelper, m_cbAnalWrtSys.SelectedItem,
 																	m_cbVernWrtSys.SelectedItem,
 																	m_wsManager.UserWritingSystem.Id,
 																	m_newAnalysisWss, m_newVernWss, anthroFile, m_useMemoryWSManager);
@@ -705,7 +708,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					m_fIgnoreClose = true;
 					DialogResult = DialogResult.Cancel;
 				}
-				else if (e is StartupException)
+				else if (e is LcmInitializationException)
 				{
 					MessageBox.Show(string.Format(FwCoreDlgs.kstidErrorNewDb, e.Message),
 						FwUtils.ksSuiteName);
@@ -888,27 +891,23 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 			if (m_cbVernWrtSys.Items.Count > 0)
 			{
-#if !__MonoCS__
-				int i = (wsSaveVern == null ? 0 : m_cbVernWrtSys.FindString(wsSaveVern.ToString()));
-#else
-	// TODO-Linux: mono difference? on mono setting SelectedIndex to 0 on an empty combo throws exception
-				int i = (wsSaveVern == null ? -1 : m_cbVernWrtSys.FindString(wsSaveVern.ToString()));
-				if (i != -1)
-#endif
-				m_cbVernWrtSys.SelectedIndex = (i >= 0 ? i : 0);
+				// TODO-Linux: mono difference? on mono setting SelectedIndex to 0 on an empty combo throws exception
+				if (wsSaveVern != null || !Platform.IsMono)
+				{
+					var i = wsSaveVern == null ? 0 : m_cbVernWrtSys.FindString(wsSaveVern.ToString());
+					m_cbVernWrtSys.SelectedIndex = i >= 0 ? i : 0;
+				}
 			}
 			m_cbVernWrtSys.EndUpdate();
 
 			if (m_cbAnalWrtSys.Items.Count > 0)
 			{
-#if !__MonoCS__
-				int i = (wsSaveAnal == null ? 0 : m_cbAnalWrtSys.FindString(wsSaveAnal.ToString()));
-#else
 				// TODO-Linux: mono difference? on mono setting SelectedIndex to 0 on an empty combo throws exception
-				int i = (wsSaveAnal == null ? -1 : m_cbAnalWrtSys.FindString(wsSaveAnal.ToString()));
-				if (i != -1)
-#endif
-				m_cbAnalWrtSys.SelectedIndex = (i >= 0 ? i : 0);
+				if (wsSaveAnal != null || !Platform.IsMono)
+				{
+					var i = wsSaveAnal == null ? 0 : m_cbAnalWrtSys.FindString(wsSaveAnal.ToString());
+					m_cbAnalWrtSys.SelectedIndex = i >= 0 ? i : 0;
+				}
 			}
 			m_cbAnalWrtSys.EndUpdate();
 		}
@@ -927,7 +926,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				Enumerable.Empty<CoreWritingSystemDefinition>(), Enumerable.Empty<CoreWritingSystemDefinition>(), Enumerable.Empty<CoreWritingSystemDefinition>());
 			IEnumerable<CoreWritingSystemDefinition> newWritingSystems;
 			if (WritingSystemPropertiesDialog.ShowNewDialog(this, null, m_wsManager, wsContainer, m_helpTopicProvider, (IApp) m_helpTopicProvider,
-				null, false, defaultName, out newWritingSystems))
+				false, defaultName, out newWritingSystems))
 			{
 				UpdateLanguageCombos();
 				string selectedWsId = newWritingSystems.First().Id;

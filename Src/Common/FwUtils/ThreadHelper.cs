@@ -8,7 +8,6 @@
 using System;
 using System.ComponentModel;
 using System.Windows.Forms;
-using System.Diagnostics.CodeAnalysis;
 
 namespace SIL.FieldWorks.Common.FwUtils
 {
@@ -65,7 +64,10 @@ namespace SIL.FieldWorks.Common.FwUtils
 			if (fDisposing && !IsDisposed)
 			{
 				// dispose managed and unmanaged objects
-				Invoke((MethodInvoker)(m_invokeControl.Dispose));
+				if (InvokeRequired)
+					Invoke((MethodInvoker)(m_invokeControl.Dispose));
+				else
+					m_invokeControl.Dispose();
 			}
 			IsDisposed = true;
 		}
@@ -134,8 +136,6 @@ namespace SIL.FieldWorks.Common.FwUtils
 		/// active form is used. Any invoking that is required is handled.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "owner is a reference")]
 		public static DialogResult ShowMessageBox(Form owner, string text, string caption,
 			MessageBoxButtons buttons, MessageBoxIcon icon)
 		{

@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -8,7 +8,8 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
 using System.Reflection;
-using SIL.Utils; // For IFWDisposable
+using SIL.PlatformUtilities;
+using SIL.Utils;
 
 namespace XCore
 {
@@ -28,7 +29,7 @@ namespace XCore
 	/// Most of the mehtods in these interfaces wil be pass-thourh methods to m_mainControl,
 	/// but we will try to get some use out of them, as well.
 	/// </remarks>
-	public partial class PaneBarContainer : BasicPaneBarContainer, IxCoreContentControl, IFWDisposable, IPostLayoutInit
+	public partial class PaneBarContainer : BasicPaneBarContainer, IxCoreContentControl, IPostLayoutInit
 	{
 		#region Data Members
 
@@ -47,13 +48,16 @@ namespace XCore
 			InitializeComponent();
 		}
 
-#if __MonoCS__ // FWNX-425
+		// FWNX-425
 		/// <summary> make Width always match parent Width </summary>
 		protected override void OnLayout(LayoutEventArgs levent)
 		{
-			if (Parent != null && Width != Parent.Width)
+			if (Platform.IsMono)
 			{
-				Width = Parent.Width;
+				if (Parent != null && Width != Parent.Width)
+				{
+					Width = Parent.Width;
+				}
 			}
 
 			base.OnLayout (levent);
@@ -62,14 +66,16 @@ namespace XCore
 		/// <summary> make Width always match parent Width </summary>
 		protected override void OnSizeChanged(EventArgs e)
 		{
-			if (Parent != null && Width != Parent.Width)
+			if (Platform.IsMono)
 			{
-				Width = Parent.Width;
+				if (Parent != null && Width != Parent.Width)
+				{
+					Width = Parent.Width;
+				}
 			}
 
 			base.OnSizeChanged (e);
 		}
-#endif
 
 		#endregion Construction
 
@@ -103,7 +109,7 @@ namespace XCore
 
 		#endregion Properties
 
-		#region IFWDisposable implementation, in part
+		#region Disposable implementation, in part
 
 		/// <summary>
 		/// Check to see if the object has been disposed.
@@ -116,7 +122,7 @@ namespace XCore
 				throw new ObjectDisposedException(String.Format("'{0}' in use after being disposed.", GetType().Name));
 		}
 
-		#endregion IFWDisposable implementation, in part
+		#endregion Disposable implementation, in part
 
 		#region IxCoreColleague implementation
 		/// <summary></summary>
@@ -148,7 +154,7 @@ namespace XCore
 			XmlNode mainControlNode = m_configurationParameters.SelectSingleNode("control");
 			Control mainControl = DynamicLoader.CreateObjectUsingLoaderNode(mainControlNode) as Control;
 			if (mainControl == null)
-				throw new ApplicationException("Soemthing went wrong trying to create the main control.");
+				throw new ApplicationException("Something went wrong trying to create the main control.");
 
 			if (!(mainControl is IxCoreContentControl))
 				throw new ApplicationException("A PaneBarContainer can only handle controls which implement IxCoreContentControl.");
@@ -168,15 +174,17 @@ namespace XCore
 				mp.ParentSizeHint = ParentSizeHint;
 			}*/
 			(mainControl as IxCoreColleague).Init(m_mediator, m_propertyTable, mainControlNode.SelectSingleNode("parameters"));
-#if __MonoCS__
-			// At least one IPaneBarUser main control disposes of its MainPaneBar.  This can
-			// cause the program to hang later on.  See FWNX-1036 for details.
-			if ((m_paneBar as Control).IsDisposed)
+			if (Platform.IsMono)
 			{
-				Controls.Remove(m_paneBar as Control);
-				m_paneBar = null;
+				// At least one IPaneBarUser main control disposes of its MainPaneBar.  This can
+				// cause the program to hang later on.  See FWNX-1036 for details.
+				if ((m_paneBar as Control).IsDisposed)
+				{
+					Controls.Remove(m_paneBar as Control);
+					m_paneBar = null;
+				}
 			}
-#endif
+
 			Controls.Add(mainControl);
 			if (mainControl is MultiPane)
 			{
@@ -349,6 +357,12 @@ namespace XCore
 		public IPaneBar PaneBar
 		{
 			get { return m_paneBar; }
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + ". ******");
+			base.Dispose(disposing);
 		}
 	}
 }

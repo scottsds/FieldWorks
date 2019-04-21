@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -13,13 +12,11 @@ using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
 using System.Xml.Xsl;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="m_cache and m_mediator are references")]
 	public class XAmpleWordGrammarDebugger
 	{
 		private static ParserTraceUITransform s_pageTransform;
@@ -44,14 +41,14 @@ namespace SIL.FieldWorks.LexText.Controls
 		private XDocument m_wordGrammarDebuggerXml;
 		private PropertyTable m_propertyTable;
 		private readonly XslCompiledTransform m_intermediateTransform;
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 		private readonly XDocument m_parseResult;
 
 		public XAmpleWordGrammarDebugger(PropertyTable propertyTable, XDocument parseResult)
 		{
 			m_propertyTable = propertyTable;
 			m_parseResult = parseResult;
-			m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_xmlHtmlStack = new Stack<Tuple<XDocument, string>>();
 			m_intermediateTransform = new XslCompiledTransform();
 			m_intermediateTransform.Load(Path.Combine(Path.GetTempPath(), m_cache.ProjectId.Name + "XAmpleWordGrammarDebugger.xsl"), new XsltSettings(true, false), new XmlUrlResolver());

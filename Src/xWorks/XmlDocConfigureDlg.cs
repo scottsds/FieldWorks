@@ -1,22 +1,18 @@
-// Copyright (c) 2007-2015 SIL International
+// Copyright (c) 2007-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: XmlDocConfigureDlg.cs
-// Responsibility:
-// Last reviewed:
 //
 // <remarks>
 // Uncomment the #define if you want to see the "Restore Defaults" and "Set/Clear All" buttons.
 // (This affects only DEBUG builds.)
 // </remarks>
+
 #define DEBUG_TEST
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -24,16 +20,18 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.FwCoreDlgControls;
 using SIL.FieldWorks.FwCoreDlgs;
+using SIL.LCModel.Infrastructure;
 using SIL.Utils;
 using SIL.Windows.Forms;
 using XCore;
@@ -52,14 +50,14 @@ namespace SIL.FieldWorks.XWorks
 	/// hideConfig="true" attributes added to a couple of part refs just to make the node tree look
 	/// nicer to the users.
 	/// </summary>
-	public partial class XmlDocConfigureDlg : Form, IFWDisposable, ILayoutConverter
+	public partial class XmlDocConfigureDlg : Form, ILayoutConverter
 	{
 		XmlNode m_configurationParameters;
 		string m_defaultRootLayoutName;
 		const string sdefaultStemBasedLayout = "publishStem";
-		FdoCache m_cache;
+		LcmCache m_cache;
 		IFwMetaDataCache m_mdc;
-		FwStyleSheet m_styleSheet;
+		LcmStyleSheet m_styleSheet;
 		IMainWindowDelegateCallbacks m_callbacks;
 		Mediator m_mediator;
 		private XCore.PropertyTable m_propertyTable;
@@ -236,18 +234,11 @@ namespace SIL.FieldWorks.XWorks
 #endif
 		}
 
-		//void m_cfgSenses_VisibleChanged(object sender, EventArgs e)
-		//{
-		//    // Seems at resolutions other than 96dpi this control changes its minimumSize
-		//    // when it first becomes visible, so at that point we need to adjust it.
-		//    m_cfgSenses.Height = m_cfgSenses.MinimumSize.Height;
-		//}
-
 		/// <summary>
 		/// Initialize the dialog after creating it.
 		/// </summary>
-		public void SetConfigDlgInfo(XmlNode configurationParameters, FdoCache cache,
-			FwStyleSheet styleSheet, IMainWindowDelegateCallbacks mainWindowDelegateCallbacks,
+		public void SetConfigDlgInfo(XmlNode configurationParameters, LcmCache cache,
+			LcmStyleSheet styleSheet, IMainWindowDelegateCallbacks mainWindowDelegateCallbacks,
 			Mediator mediator, XCore.PropertyTable propertyTable, string sLayoutPropertyName)
 		{
 			CheckDisposed();
@@ -386,7 +377,7 @@ namespace SIL.FieldWorks.XWorks
 				m_rgRelationTypes.Sort(ComparePossibilitiesByName);
 			}
 			// Add any new types to our ordered list (or fill in an empty list).
-			var setSortedGuids = new Set<GuidAndSubClass>();
+			var setSortedGuids = new HashSet<GuidAndSubClass>();
 			foreach (var lri in ltn.RelTypeList)
 				setSortedGuids.Add(new GuidAndSubClass(lri.ItemGuid, lri.SubClass));
 			foreach (var poss in m_rgRelationTypes)
@@ -487,7 +478,7 @@ namespace SIL.FieldWorks.XWorks
 		public void BuildEntryTypeList(LayoutTreeNode ltn, string parentLayoutName)
 		{
 			// Add any new types to our ordered list (or fill in an empty list).
-			var setGuidsFromXml = new Set<Guid>(ltn.EntryTypeList.Select(info => info.ItemGuid));
+			var setGuidsFromXml = new HashSet<Guid>(ltn.EntryTypeList.Select(info => info.ItemGuid));
 			Dictionary<Guid, ICmPossibility> mapGuidType;
 			int index;
 			switch (ltn.EntryType)
@@ -984,7 +975,7 @@ namespace SIL.FieldWorks.XWorks
 		private void ProcessPartChildForDuplication(string className, XmlNode xnCaller,
 			XmlNode xnField, string suffixCode, List<XmlNode> duplicates)
 		{
-			var sLayoutName = XmlUtils.GetManditoryAttributeValue(xnCaller, "param");
+			var sLayoutName = XmlUtils.GetMandatoryAttributeValue(xnCaller, "param");
 			var fRecurse = XmlUtils.GetOptionalBooleanAttributeValue(xnCaller, "recurseConfig", true);
 			if (!fRecurse)
 			{
@@ -993,7 +984,7 @@ namespace SIL.FieldWorks.XWorks
 				// Or because entries have subentries (in root type layouts)...
 				return;
 			}
-			var sField = XmlUtils.GetManditoryAttributeValue(xnField, "field");
+			var sField = XmlUtils.GetMandatoryAttributeValue(xnField, "field");
 			var clidDst = 0;
 			string sClass = null;
 			string sTargetClasses = null;
@@ -1002,7 +993,7 @@ namespace SIL.FieldWorks.XWorks
 				// Failure should be fairly unusual, but, for example, part MoForm-Jt-FormEnvPub attempts to display
 				// the property PhoneEnv inside an if that checks that the MoForm is one of the subclasses that has
 				// the PhoneEnv property. MoForm itself does not.
-				var mdc = (FDO.Infrastructure.IFwMetaDataCacheManaged)m_cache.DomainDataByFlid.MetaDataCache;
+				var mdc = (IFwMetaDataCacheManaged)m_cache.DomainDataByFlid.MetaDataCache;
 				if (!mdc.FieldExists(className, sField, true))
 					return;
 				var flid = m_cache.DomainDataByFlid.MetaDataCache.GetFieldId(className, sField, true);
@@ -1081,7 +1072,7 @@ namespace SIL.FieldWorks.XWorks
 			// It is important for at least one caller that the FIRST node added to duplicates is the copy of xnLayout.
 			duplicates.Add(xnLayout);
 			AdjustAttributeValue(xnLayout, "name", suffixCode);
-			var className = XmlUtils.GetManditoryAttributeValue(xnLayout, "class");
+			var className = XmlUtils.GetMandatoryAttributeValue(xnLayout, "class");
 
 			foreach (XmlNode partref in xnLayout.ChildNodes)
 			{
@@ -1090,7 +1081,7 @@ namespace SIL.FieldWorks.XWorks
 					var param = XmlUtils.GetOptionalAttributeValue(partref, "param");
 					if (!String.IsNullOrEmpty(param))
 					{
-						var sRef = XmlUtils.GetManditoryAttributeValue(partref, "ref");
+						var sRef = XmlUtils.GetMandatoryAttributeValue(partref, "ref");
 						var xnPart = m_parts.GetElement("part", new[] {String.Format("{0}-Jt-{1}", className, sRef)});
 						if (xnPart == null)
 						{
@@ -1107,7 +1098,7 @@ namespace SIL.FieldWorks.XWorks
 				}
 				else if (partref.Name == "sublayout")
 				{
-					var sublayout = XmlUtils.GetManditoryAttributeValue(partref, "name");
+					var sublayout = XmlUtils.GetMandatoryAttributeValue(partref, "name");
 					var xnSublayout = m_layouts.GetElement("layout", new[] {className, "jtview", sublayout, null});
 					DuplicateLayout(xnSublayout.Clone(), suffixCode, duplicates);
 					AdjustAttributeValue(partref, "name", suffixCode);
@@ -1159,8 +1150,6 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void m_btnRestoreDefaults_Click(object sender, EventArgs e)
 		{
 			using (new WaitCursor(this))
@@ -1937,18 +1926,12 @@ namespace SIL.FieldWorks.XWorks
 			}
 			ltn.ShowSingleGramInfoFirst = m_chkShowSingleGramInfoFirst.Checked;
 			// Set the information on the child grammatical info node as well.
-			foreach (TreeNode n in ltn.Nodes)
+			foreach (var tn in ltn.Nodes.Cast<LayoutTreeNode>().Where(n => n.ShowGramInfoConfig))
 			{
-				LayoutTreeNode tn = n as LayoutTreeNode;
-				if (tn != null && tn.ShowGramInfoConfig)
-				{
-					tn.ShowSingleGramInfoFirst = m_chkShowSingleGramInfoFirst.Checked;
-					break;
-				}
+				tn.ShowSingleGramInfoFirst = m_chkShowSingleGramInfoFirst.Checked;
 			}
 			ltn.ShowSenseAsPara = m_cfgSenses.DisplaySenseInPara;
 			ltn.SenseParaStyle = m_cfgSenses.SenseParaStyle;
-			//ltn.SingleSenseStyle = m_cfgSenses.SingleSenseStyle;
 		}
 
 		private void StoreGramInfoData(LayoutTreeNode ltn)
@@ -2907,15 +2890,11 @@ namespace SIL.FieldWorks.XWorks
 
 		#endregion // Misc internal functions
 
-		#region IFWDisposable Members
-
 		public void CheckDisposed()
 		{
 			if (IsDisposed)
 				throw new ObjectDisposedException(String.Format("'{0}' in use after being disposed.", GetType().Name));
 		}
-
-		#endregion // IFWDisposable Members
 
 		#region LayoutTreeNode class
 
@@ -2989,22 +2968,22 @@ namespace SIL.FieldWorks.XWorks
 			public LayoutTreeNode(XmlNode config, ILayoutConverter converter, string classParent)
 			{
 				m_xnConfig = config;
-				m_sLabel = XmlUtils.GetLocalizedAttributeValue(config, "label", null);
+				m_sLabel = XmlUtils.GetLocalizedAttributeValue(converter.StringTable, config, "label", null);
 				if (config.Name == "configure")
 				{
-					m_sClassName = XmlUtils.GetManditoryAttributeValue(config, "class");
-					m_sLayoutName = XmlUtils.GetManditoryAttributeValue(config, "layout");
+					m_sClassName = XmlUtils.GetMandatoryAttributeValue(config, "class");
+					m_sLayoutName = XmlUtils.GetMandatoryAttributeValue(config, "layout");
 					m_sPartName = String.Empty;
 					m_sVisibility = "required";
 				}
 				else if (config.Name == "part")
 				{
 					m_sClassName = classParent;
-					string sRef = XmlUtils.GetManditoryAttributeValue(config, "ref");
+					string sRef = XmlUtils.GetMandatoryAttributeValue(config, "ref");
 					if(m_sLabel == null && converter.StringTable != null)
 						m_sLabel = converter.StringTable.LocalizeAttributeValue(sRef);
 					if (config.ParentNode != null && config.ParentNode.Name == "layout")
-						m_sLayoutName = XmlUtils.GetManditoryAttributeValue(config.ParentNode, "name");
+						m_sLayoutName = XmlUtils.GetMandatoryAttributeValue(config.ParentNode, "name");
 					else
 						m_sLayoutName = String.Empty;
 					m_sPartName = String.Format("{0}-Jt-{1}", classParent, sRef);
@@ -4013,10 +3992,10 @@ namespace SIL.FieldWorks.XWorks
 					if (m_xnHiddenNode != null)
 					{
 						string sNewName = String.Format("{0}_{1}",
-														XmlUtils.GetManditoryAttributeValue(m_xnParentLayout, "name"),
+														XmlUtils.GetMandatoryAttributeValue(m_xnParentLayout, "name"),
 														m_sDup);
 						string sNewParam = String.Format("{0}_{1}",
-														XmlUtils.GetManditoryAttributeValue(m_xnHiddenNode, "param"),
+														XmlUtils.GetMandatoryAttributeValue(m_xnHiddenNode, "param"),
 														m_sDup);
 						m_xnHiddenNode = m_xnHiddenNode.CloneNode(true);
 						UpdateAttribute(m_xnHiddenNode, "dup", m_sDup);
@@ -4305,8 +4284,8 @@ namespace SIL.FieldWorks.XWorks
 
 			public LayoutTypeComboItem(XmlNode xnLayoutType, List<LayoutTreeNode> rgltn)
 			{
-				m_sLabel = XmlUtils.GetManditoryAttributeValue(xnLayoutType, "label");
-				m_sLayout = XmlUtils.GetManditoryAttributeValue(xnLayoutType, "layout");
+				m_sLabel = XmlUtils.GetMandatoryAttributeValue(xnLayoutType, "label");
+				m_sLayout = XmlUtils.GetMandatoryAttributeValue(xnLayoutType, "layout");
 				LayoutTypeNode = xnLayoutType;
 				m_rgltn = rgltn;
 			}
@@ -4431,7 +4410,7 @@ namespace SIL.FieldWorks.XWorks
 			{
 				if (xn == null)
 					continue;
-				var sLayout = XmlUtils.GetManditoryAttributeValue(xn, "layout");
+				var sLayout = XmlUtils.GetMandatoryAttributeValue(xn, "layout");
 				mapLayoutToConfigBase.Add(sLayout, xn);
 			}
 			foreach ( var viewSpec in newViewsToCreate)
@@ -4447,7 +4426,7 @@ namespace SIL.FieldWorks.XWorks
 
 		//
 		// *** Configuration nodes look like this:
-		//"<layoutType label=\"Stem-based (complex forms as main entries)\" layout=\"publishStem\">" +
+		//"<layoutType label=\"Lexeme-based (complex forms as main entries)\" layout=\"publishStem\">" +
 		//    "<configure class=\"LexEntry\" label=\"Main Entry\" layout=\"publishStemEntry\"/>" +
 		//    "<configure class=\"LexEntry\" label=\"Minor Entry\" layout=\"publishStemMinorEntry\"/>" +
 		//"</layoutType>" +
@@ -4467,9 +4446,9 @@ namespace SIL.FieldWorks.XWorks
 			xaLabel.Value = label;
 			UpdateLayoutName(xnNewConfig, "layout", code);
 			// make sure we copy the top-level node if it isn't directly involved in configuration.
-			var className = XmlUtils.GetManditoryAttributeValue(xnBaseConfig.FirstChild, "class");
-			var layoutNameChild = XmlUtils.GetManditoryAttributeValue(xnBaseConfig.FirstChild, "layout");
-			var layoutName = XmlUtils.GetManditoryAttributeValue(xnBaseConfig, "layout");
+			var className = XmlUtils.GetMandatoryAttributeValue(xnBaseConfig.FirstChild, "class");
+			var layoutNameChild = XmlUtils.GetMandatoryAttributeValue(xnBaseConfig.FirstChild, "layout");
+			var layoutName = XmlUtils.GetMandatoryAttributeValue(xnBaseConfig, "layout");
 			if (layoutName != layoutNameChild)
 			{
 				var xnBaseLayout = m_layouts.GetElement("layout", new[] {className, "jtview", layoutName, null});
@@ -4486,8 +4465,8 @@ namespace SIL.FieldWorks.XWorks
 			MakeSuffixLayout(code, layoutName, className);
 			foreach (XmlNode xn in xnNewConfig.ChildNodes)
 			{
-				className = XmlUtils.GetManditoryAttributeValue(xn, "class");
-				layoutName = XmlUtils.GetManditoryAttributeValue(xn, "layout");
+				className = XmlUtils.GetMandatoryAttributeValue(xn, "class");
+				layoutName = XmlUtils.GetMandatoryAttributeValue(xn, "layout");
 				CopyAndRenameLayout(className, layoutName, "#" + code);
 				UpdateLayoutName(xn, "layout", code);
 				MakeSuffixLayout(code, layoutName, className);
@@ -4525,8 +4504,6 @@ namespace SIL.FieldWorks.XWorks
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void CopyAndRenameLayout(string className, string layoutName, string suffixCode)
 		{
 			var xnLayout = m_layouts.GetElement("layout", new[] { className, "jtview", layoutName, null });
@@ -4564,7 +4541,7 @@ namespace SIL.FieldWorks.XWorks
 
 		private void DeleteUnwantedConfigurations(IEnumerable<string> viewsToDelete)
 		{
-			var configDir = FdoFileHelper.GetConfigSettingsDir(m_cache.ProjectId.ProjectFolder);
+			var configDir = LcmFileHelper.GetConfigSettingsDir(m_cache.ProjectId.ProjectFolder);
 			// Load in existing combobox LayoutTypeComboItems
 			var layoutMap = LoadLayoutMapFromComboBox();
 
@@ -4587,8 +4564,8 @@ namespace SIL.FieldWorks.XWorks
 
 		private static string GetConfigFilePath(XmlNode xnConfig, string configDir)
 		{
-			var label = XmlUtils.GetManditoryAttributeValue(xnConfig, "label");
-			var className = XmlUtils.GetManditoryAttributeValue(xnConfig.FirstChild, "class");
+			var label = XmlUtils.GetMandatoryAttributeValue(xnConfig, "label");
+			var className = XmlUtils.GetMandatoryAttributeValue(xnConfig.FirstChild, "class");
 			var name = String.Format("{0}_{1}.fwlayout", label, className);
 			return Path.Combine(configDir, name);
 		}
@@ -4615,7 +4592,7 @@ namespace SIL.FieldWorks.XWorks
 
 		private void RenameConfigurations(IEnumerable<Tuple<string, string>> viewsToRename)
 		{
-			var configDir = FdoFileHelper.GetConfigSettingsDir(m_cache.ProjectId.ProjectFolder);
+			var configDir = LcmFileHelper.GetConfigSettingsDir(m_cache.ProjectId.ProjectFolder);
 			// Load in existing combobox LayoutTypeComboItems
 			var layoutMap = LoadLayoutMapFromComboBox();
 
@@ -4677,7 +4654,7 @@ namespace SIL.FieldWorks.XWorks
 			{
 				if (ltn == null)
 					continue;
-				var sLayout = XmlUtils.GetManditoryAttributeValue(ltn.LayoutTypeNode, "layout");
+				var sLayout = XmlUtils.GetMandatoryAttributeValue(ltn.LayoutTypeNode, "layout");
 				mapLayoutToConfigBase.Add(sLayout, ltn);
 			}
 			return mapLayoutToConfigBase;
@@ -4710,7 +4687,7 @@ namespace SIL.FieldWorks.XWorks
 			return m_layouts.GetLayoutTypes();
 		}
 
-		public FdoCache Cache { get { return m_cache; } }
+		public LcmCache Cache { get { return m_cache; } }
 
 		public StringTable StringTable { get { return StringTable.Table; } }
 

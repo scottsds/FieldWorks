@@ -37,14 +37,14 @@ INCLUDES := $(INCLUDES) \
 	-I$(COM_INC) \
 	-I$(WIN32BASE_INC) \
 	$(shell pkg-config --cflags $(PACKAGES)) \
-	$(shell icu-config --detect-prefix --cppflags) \
+	$(shell icu-config --cppflags) \
 
 LDLIBS = \
 	-L$(WIN32MORE_LIB) -lWin32More \
 	-L$(COM_LIB) -lcom \
 	-L$(WIN32BASE_LIB) -lWin32Base \
 	$(shell pkg-config --libs $(PACKAGES)) \
-	$(shell icu-config --detect-prefix --ldflags) \
+	$(shell icu-config --ldflags) \
 	-ldl
 
 ifeq ($(BUILD_CONFIG),Debug)
@@ -54,7 +54,7 @@ else
 endif
 
 CPPFLAGS = $(DEFINES) $(INCLUDES) -MMD
-CXXFLAGS = -g $(OPTIMIZATIONS) -fPIC -fvisibility=hidden -Werror -Wshadow
+CXXFLAGS = -g $(OPTIMIZATIONS) -fPIC -fvisibility=hidden -Werror -Wshadow -std=c++11
 
 ARFLAGS = -crs
 
@@ -69,7 +69,6 @@ LINK_LIBS = \
 
 OBJ_APPCORE = \
 	$(INT_DIR)/FwStyledText.o \
-	$(INT_DIR)/WriteXml.o \
 
 OBJ_ALL = $(OBJ_APPCORE)
 

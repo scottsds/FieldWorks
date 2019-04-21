@@ -1,21 +1,22 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.FieldWorks.FwCoreDlgControls;
 using SIL.FieldWorks.IText;
-using SIL.Utils;
+using SIL.Windows.Forms.Widgets;
 
 namespace SIL.FieldWorks.Discourse
 {
@@ -39,7 +40,6 @@ namespace SIL.FieldWorks.Discourse
 
 		private readonly IStTextRepository m_textRepo;
 		private readonly ISegmentRepository m_segRepo;
-		private readonly IAnalysisRepository m_analysisRepo;
 		private readonly IConstChartRowFactory m_rowFact;
 		private readonly IConstChartRowRepository m_rowRepo;
 		private readonly IConstituentChartCellPartRepository m_cellPartRepo;
@@ -49,15 +49,13 @@ namespace SIL.FieldWorks.Discourse
 		private readonly IConstChartMovedTextMarkerFactory m_movedTextFact;
 		private readonly IConstChartClauseMarkerRepository m_clauseMkrRepo;
 		private readonly IConstChartClauseMarkerFactory m_clauseMkrFact;
-		private readonly IConstChartTagRepository m_chartTagRepo;
 		private readonly IConstChartTagFactory m_chartTagFact;
 		private readonly ICmPossibilityRepository m_possRepo;
-		private readonly ITsStrFactory m_tssFact;
 
 		#endregion
 
 		private ICmPossibility[] m_allMyColumns;
-		private Set<int> m_indexGroupEnds; // indices of ends of column Groups (for LT-8104; setting apart Nucleus)
+		private ISet<int> m_indexGroupEnds; // indices of ends of column Groups (for LT-8104; setting apart Nucleus)
 		private int[] m_currHighlightCells; // Keeps track of highlighted cells when dealing with ChartOrphan insertion.
 
 		/// <summary>
@@ -76,7 +74,7 @@ namespace SIL.FieldWorks.Discourse
 
 		public event EventHandler Ribbon_Changed;
 
-		public ConstituentChartLogic(FdoCache cache, IDsConstChart chart, int hvoStText)
+		public ConstituentChartLogic(LcmCache cache, IDsConstChart chart, int hvoStText)
 			: this(cache)
 		{
 			m_hvoStText = hvoStText;
@@ -87,7 +85,7 @@ namespace SIL.FieldWorks.Discourse
 		/// Make one and set the other stuff later.
 		/// </summary>
 		/// <param name="cache"></param>
-		public ConstituentChartLogic(FdoCache cache)
+		public ConstituentChartLogic(LcmCache cache)
 		{
 			Cache = cache;
 			// Setup Factories and Repositories
@@ -102,12 +100,9 @@ namespace SIL.FieldWorks.Discourse
 			m_movedTextFact = servLoc.GetInstance<IConstChartMovedTextMarkerFactory>();
 			m_clauseMkrRepo = servLoc.GetInstance<IConstChartClauseMarkerRepository>();
 			m_clauseMkrFact = servLoc.GetInstance<IConstChartClauseMarkerFactory>();
-			m_chartTagRepo	= servLoc.GetInstance<IConstChartTagRepository>();
 			m_chartTagFact	= servLoc.GetInstance<IConstChartTagFactory>();
-			m_analysisRepo	= servLoc.GetInstance<IAnalysisRepository>();
 			m_cellPartRepo	= servLoc.GetInstance<IConstituentChartCellPartRepository>();
 			m_possRepo		= servLoc.GetInstance<ICmPossibilityRepository>();
-			m_tssFact		= servLoc.GetInstance<ITsStrFactory>();
 		}
 
 		public void Init(IHelpTopicProvider helpTopicProvider)
@@ -115,7 +110,7 @@ namespace SIL.FieldWorks.Discourse
 			m_helpTopicProvider = helpTopicProvider;
 		}
 
-		protected internal FdoCache Cache { get; protected set; }
+		protected internal LcmCache Cache { get; protected set; }
 
 		protected internal virtual bool ChartIsRtL
 		{
@@ -226,8 +221,7 @@ namespace SIL.FieldWorks.Discourse
 		{
 			get
 			{
-				if (m_allMyColumns == null)
-					m_allMyColumns = AllColumns(m_chart.TemplateRA).ToArray();
+				m_allMyColumns = AllColumns(m_chart.TemplateRA).ToArray();
 				return m_allMyColumns;
 			}
 		}
@@ -235,7 +229,7 @@ namespace SIL.FieldWorks.Discourse
 		/// <summary>
 		/// Returns an array of all the columns for the template of the chart that are the ends of column groups.
 		/// </summary>
-		public Set<int> GroupEndIndices
+		public ISet<int> GroupEndIndices
 		{
 			get
 			{
@@ -338,11 +332,11 @@ namespace SIL.FieldWorks.Discourse
 			}
 
 			// Get a set of all AnalysisOccurrence objects currently in the chart.
-			var chartedTargets = new Set<AnalysisOccurrence>();
+			var chartedTargets = new HashSet<AnalysisOccurrence>();
 			foreach (var cellPart in m_chart.RowsOS.SelectMany(
 				row => row.CellsOS.OfType<IConstChartWordGroup>()))
 			{
-				chartedTargets.AddRange((cellPart).GetOccurrences());
+				chartedTargets.UnionWith(cellPart.GetOccurrences());
 			}
 
 			// Figure out which words are NOT charted
@@ -614,9 +608,6 @@ namespace SIL.FieldWorks.Discourse
 		/// The last wordform in this row is "after" our ChOrph's logical position, but the first isn't
 		/// and the right Following Cell is in this row.
 		/// </summary>
-		/// <param name="iPara"></param>
-		/// <param name="offset"></param>
-		/// <param name="precCell"></param>
 		private int NarrowSearchBackward(int iPara, int offset, ChartLocation precCell, int icolFoll)
 		{
 			Debug.Assert(precCell != null && precCell.IsValidLocation);
@@ -928,7 +919,7 @@ namespace SIL.FieldWorks.Discourse
 		public List<ICmPossibility> AllColumns(ICmPossibility template)
 		{
 			var result = new List<ICmPossibility>();
-			var groups = new Set<int>();
+			var groups = new HashSet<int>();
 			if (template == null || template.SubPossibilitiesOS.Count == 0)
 				return result; // template itself can't be a column even if no children.
 			CollectColumns(result, template, groups, 0);
@@ -944,7 +935,7 @@ namespace SIL.FieldWorks.Discourse
 		/// <param name="template"></param>
 		/// <param name="groups"></param>
 		/// <param name="depth"></param>
-		private void CollectColumns(List<ICmPossibility> result, ICmPossibility template, Set<int> groups, int depth)
+		private void CollectColumns(List<ICmPossibility> result, ICmPossibility template, HashSet<int> groups, int depth)
 		{
 			if (template.SubPossibilitiesOS.Count == 0)
 			{
@@ -1431,20 +1422,26 @@ namespace SIL.FieldWorks.Discourse
 		internal const int kMaxRibbonContext = 20;
 
 		/// <summary>
-		/// Insert another row below the argument row.
-		/// Takes over any compDetails of the previous row.
-		/// Line label is calculated based on the previous row's label.
+		/// Insert another row.
+		/// If inserting below, takes over any compDetails of the previous row.
+		/// Line label is calculated based on the original row's label.
 		/// Caller deals with UOW.
 		/// </summary>
-		/// <param name="previousRow"></param>
-		public void InsertRow(IConstChartRow previousRow)
+		/// <param name="originalRow">The row one clicks to insert another row above or below</param>
+		/// <param name="insertAbove">True = insert above; False = insert below</param>
+		public void InsertRow(IConstChartRow originalRow, bool insertAbove)
 		{
-			var index = previousRow.IndexInOwner;
-
+			var index = originalRow.IndexInOwner;
 			var newRow = m_rowFact.Create();
-			m_chart.RowsOS.Insert(index + 1, newRow);
-			SetupCompDetailsForInsertRow(previousRow, newRow);
-			// It's easiest to just renumber starting with the row above the inserted one.
+			if(insertAbove)
+			{
+				m_chart.RowsOS.Insert(index, newRow);
+			}
+			else
+			{
+				m_chart.RowsOS.Insert(index + 1, newRow);
+				SetupCompDetailsForInsertRow(originalRow, newRow);
+			}
 			// foneSentOnly = true, because we are only adding a letter to the current sentence.
 			RenumberRows(index, true);
 		}
@@ -1559,13 +1556,13 @@ namespace SIL.FieldWorks.Discourse
 			var myAbnormalRows = m_chart.RowsOS.Where(row => row.ClauseType != ClauseTypes.Normal).ToList();
 			if (myAbnormalRows.Count == 0)
 				return;
-			var clsMrkrTargets = new Set<IConstChartRow>();
+			var clsMrkrTargets = new HashSet<IConstChartRow>();
 			var myClsMrkrs = m_clauseMkrRepo.AllInstances().Where(mrkr =>
 				mrkr.Owner != null &&
 				mrkr.Owner.Owner != null &&
 				mrkr.Owner.Owner.Hvo == m_chart.Hvo);
 			foreach (var clsMrkr in myClsMrkrs)
-				clsMrkrTargets.AddRange(clsMrkr.DependentClausesRS);
+				clsMrkrTargets.UnionWith(clsMrkr.DependentClausesRS);
 			foreach (var row in myAbnormalRows.Where(row => !clsMrkrTargets.Contains(row)))
 				ResetDepClauseProps(row);
 		}
@@ -1619,7 +1616,7 @@ namespace SIL.FieldWorks.Discourse
 		{
 			var newRow = m_rowFact.Create();
 			m_chart.RowsOS.Add(newRow);
-			newRow.Label = m_tssFact.MakeString(rowLabel, WsLineNumber);
+			newRow.Label = TsStringUtils.MakeString(rowLabel, WsLineNumber);
 			return newRow;
 		}
 
@@ -1663,7 +1660,7 @@ namespace SIL.FieldWorks.Discourse
 		private void AddLetterToNumberOnlyLabel(int rowIndex, int rowNumber)
 		{
 			m_chart.RowsOS[rowIndex].Label =
-				m_tssFact.MakeString(Convert.ToString(rowNumber) + 'a', WsLineNumber);
+				TsStringUtils.MakeString(Convert.ToString(rowNumber) + 'a', WsLineNumber);
 		}
 
 		/// <summary>
@@ -1715,15 +1712,44 @@ namespace SIL.FieldWorks.Discourse
 			else
 			{
 				row = Convert.ToInt32(rowLabel.Substring(0,posFirstLetter));
-				if (posFirstLetter == (rowLabel.Length - 1))
-				{
-					// only one letter present; we assume no more than 2 letters
-					// is it possible to have 53+ clauses in a Sentence?
-					clause = Convert.ToInt32(rowLabel[posFirstLetter]) - Convert.ToInt32('a') + 1;
-				}
-				else
-					clause = Convert.ToInt32(rowLabel[posFirstLetter + 1]) - Convert.ToInt32('a') + 27;
+				clause = ClauseNumberFromLabel(rowLabel.Substring(posFirstLetter));
 			}
+		}
+
+		/// <summary>
+		/// Converts a row clause label (Bijective Base-26) into the corresponding integer value
+		/// </summary>
+		private static int ClauseNumberFromLabel(string value)
+		{
+			if (value.Length < 1)
+			{
+				return 0;
+			}
+			if (value.Length == 1)
+			{
+				return Convert.ToInt32(value[0] - 'a' + 1);
+			}
+			int current = Convert.ToInt32(value[0] - 'a' + 1) * (int)Math.Pow(26, value.Length - 1);
+			return current + ClauseNumberFromLabel(value.Substring(1));
+		}
+
+		/// <summary>
+		/// Converts an integer value into its corresponding row clause label (Bijective Base-26)
+		/// </summary>
+		private static string LabelFromClauseNumber(int value)
+		{
+			if (value < 1)
+			{
+				return String.Empty;
+			}
+			if (value < 26)
+			{
+				return String.Empty + Convert.ToChar(value + 'a' - 1);
+			}
+			value--;
+			char c = Convert.ToChar(value % 26);
+			value -= c;
+			return LabelFromClauseNumber(value / 26) + Convert.ToChar(c + 'a');
 		}
 
 		/// <summary>
@@ -1759,7 +1785,7 @@ namespace SIL.FieldWorks.Discourse
 				var rowLabel = CalculateMyRowNums(ref csentence, ref cclause, fIsPrevRowEOS, fIsThisRowEOS);
 				if (m_chart.RowsOS[irow].Label.Text != rowLabel)
 				{
-					m_chart.RowsOS[irow].Label = m_tssFact.MakeString(rowLabel, WsLineNumber);
+					m_chart.RowsOS[irow].Label = TsStringUtils.MakeString(rowLabel, WsLineNumber);
 				}
 				if (fIsThisRowEOS && foneSentOnly && foneSentFinished)
 					break;
@@ -1789,13 +1815,8 @@ namespace SIL.FieldWorks.Discourse
 			else prevClauseNum++;
 
 			// Make the string
-			string result;
-			if (prevClauseNum > 26)
-				result = Convert.ToString(prevSentNum) + "a" + Convert.ToChar(Convert.ToInt32('a')
-																			  + prevClauseNum - 27);
-			else
-				result = Convert.ToString(prevSentNum) + Convert.ToChar(Convert.ToInt32('a')
-																		+ prevClauseNum - 1);
+			string result = Convert.ToString(prevSentNum) + LabelFromClauseNumber(prevClauseNum);
+
 			if (fSentBrkAfter && fSentBrkBefore)
 				// Strip 'a' off of string.
 				result = result.Substring(0, result.Length - 1);
@@ -2302,8 +2323,6 @@ namespace SIL.FieldWorks.Discourse
 			return FindCellPartInColumn(cell) == null;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "ToolStripSeparator gets added to menu and disposed there")]
 		public ContextMenuStrip MakeCellContextMenu(ChartLocation clickedCell)
 		{
 			var irow = clickedCell.Row.IndexInOwner;
@@ -2367,9 +2386,13 @@ namespace SIL.FieldWorks.Discourse
 				}
 			}
 
-			var itemNewRow = new RowColMenuItem(DiscourseStrings.ksInsertRowMenuItem, clickedCell);
-			menu.Items.Add(itemNewRow);
-			itemNewRow.Click += new EventHandler(itemNewRow_Click);
+			var itemNewRowAbove = new RowColMenuItem(DiscourseStrings.ksInsertRowMenuItemAbove, clickedCell);
+			menu.Items.Add(itemNewRowAbove);
+			itemNewRowAbove.Click += new EventHandler(itemNewRowAbove_Click);
+
+			var itemNewRowBelow = new RowColMenuItem(DiscourseStrings.ksInsertRowMenuItemBelow, clickedCell);
+			menu.Items.Add(itemNewRowBelow);
+			itemNewRowBelow.Click += new EventHandler(itemNewRowBelow_Click);
 
 			var itemCFH = new RowColMenuItem(DiscourseStrings.ksClearFromHereOnMenuItem, clickedCell);
 			menu.Items.Add(itemCFH);
@@ -2554,16 +2577,28 @@ namespace SIL.FieldWorks.Discourse
 			}
 		}
 
-		void itemNewRow_Click(object sender, EventArgs e)
+		void itemNewRowAbove_Click(object sender, EventArgs e)
 		{
 			var item = sender as RowColMenuItem;
-			InsertRowInUOW(item.SrcRow);
+			InsertRowAboveInUOW(item.SrcRow);
 		}
 
-		private void InsertRowInUOW(IConstChartRow prevRow)
+		void itemNewRowBelow_Click(object sender, EventArgs e)
+		{
+			var item = sender as RowColMenuItem;
+			InsertRowBelowInUOW(item.SrcRow);
+		}
+
+		private void InsertRowAboveInUOW(IConstChartRow nextRow)
 		{
 			UndoableUnitOfWorkHelper.Do(DiscourseStrings.ksUndoInsertRow, DiscourseStrings.ksRedoInsertRow,
-							Cache.ActionHandlerAccessor, () => InsertRow(prevRow));
+							Cache.ActionHandlerAccessor, () => InsertRow(nextRow, true));
+		}
+
+		private void InsertRowBelowInUOW(IConstChartRow prevRow)
+		{
+			UndoableUnitOfWorkHelper.Do(DiscourseStrings.ksUndoInsertRow, DiscourseStrings.ksRedoInsertRow,
+							Cache.ActionHandlerAccessor, () => InsertRow(prevRow, false));
 		}
 
 		private bool CellContainsWordforms(ChartLocation cell)
@@ -2579,7 +2614,7 @@ namespace SIL.FieldWorks.Discourse
 			if (part == null || IsMissingMarker(part))
 				return;
 
-			var itemMove = new ToolStripMenuItem(mainLabel);
+			var itemMove = new DisposableToolStripMenuItem(mainLabel);
 			if (TryGetNextCell(srcCell))
 			{
 				var itemMoveForward = new RowColMenuItem(DiscourseStrings.ksForwardMenuItem, srcCell);
@@ -2650,7 +2685,7 @@ namespace SIL.FieldWorks.Discourse
 			bool fAnotherClausePossible = IsAnotherClausePossible(srcCell.Row, text == DiscourseStrings.ksPreposeFromMenuItem);
 			if ((icolStart >= icolLim) && !fMarkerPresent && !fAnotherClausePossible)
 				return;
-			var itemMTSubmenu = new ToolStripMenuItem(text);
+			var itemMTSubmenu = new DisposableToolStripMenuItem(text);
 			menu.Items.Add(itemMTSubmenu);
 			for (int i = icolStart; i < icolLim; i++)
 			{
@@ -3060,8 +3095,6 @@ namespace SIL.FieldWorks.Discourse
 
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ToolStripMenuItem gets added to menu.Items collection and disposed there.")]
 		private void GeneratePlMenuItems(ContextMenuStrip menu, ICmPossibilityList list,
 			EventHandler clickHandler, ChartLocation cell)
 		{
@@ -3155,7 +3188,7 @@ namespace SIL.FieldWorks.Discourse
 		private ToolStripMenuItem MakeDepClauseItem(ChartLocation srcCell, int irowSrc,
 			string mainLabel, ClauseTypes depType)
 		{
-			var itemMDC = new ToolStripMenuItem(mainLabel);
+			var itemMDC = new DisposableToolStripMenuItem(mainLabel);
 			if (irowSrc > 0)
 			{
 				// put in just one 'previous clause' item.
@@ -3372,7 +3405,7 @@ namespace SIL.FieldWorks.Discourse
 		/// </summary>
 		/// <param name="icol">The icol.</param>
 		/// <returns></returns>
-		public ContextMenuStrip MakeContextMenu(int icol)
+		public ContextMenuStrip InsertIntoChartContextMenu(int icol)
 		{
 			var menu = new ContextMenuStrip();
 
@@ -3380,7 +3413,7 @@ namespace SIL.FieldWorks.Discourse
 			itemNewClause.Click += new EventHandler(itemNewClause_Click);
 			menu.Items.Add(itemNewClause);
 
-			var itemMT = new ToolStripMenuItem(DiscourseStrings.ksMovedFromMenuItem);
+			var itemMT = new DisposableToolStripMenuItem(DiscourseStrings.ksMovedFromMenuItem);
 			for (int ihvo = 0; ihvo < AllMyColumns.Length; ihvo++)
 			{
 				if (ihvo == icol)
@@ -3981,9 +4014,13 @@ namespace SIL.FieldWorks.Discourse
 		{
 			get { return DiscourseStrings.ksMoveWordMenuItem; }
 		}
-		static public string FTO_InsertRowMenuItem
+		static public string FTO_InsertRowMenuItemAbove
 		{
-			get { return DiscourseStrings.ksInsertRowMenuItem; }
+			get { return DiscourseStrings.ksInsertRowMenuItemAbove; }
+		}
+		static public string FTO_InsertRowMenuItemBelow
+		{
+			get { return DiscourseStrings.ksInsertRowMenuItemBelow; }
 		}
 		static public string FTO_UndoInsertRow
 		{
@@ -4042,12 +4079,12 @@ namespace SIL.FieldWorks.Discourse
 			return result;
 		}
 
-		internal void MakeMainHeaderCols(ListView view)
+		internal void MakeMainHeaderCols(ChartHeaderView view)
 		{
 			// This is actually a display method, not a true 'logic' method.
 			// That's why we need to test for RTL script.
 			view.SuspendLayout();
-			view.Columns.Clear();
+			view.Controls.Clear();
 
 			if (ChartIsRtL)
 			{
@@ -4057,49 +4094,40 @@ namespace SIL.FieldWorks.Discourse
 			}
 			else
 			{
+				MakeNotesColumnHeader(view);
 				MakeRowNumberColumnHeader(view);
 				MakeTemplateColumnHeaders(view);
-				MakeNotesColumnHeader(view);
 			}
 
-			view.ResumeLayout();
+			view.ResumeLayout(false);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ColumnHeader gets added to the Columns collection and disposed there")]
-		private static void MakeNotesColumnHeader(ListView view)
+		private static void MakeNotesColumnHeader(ChartHeaderView view)
 		{
 			// Add one more column for notes.
-			var ch = new ColumnHeader();
+			var ch = new HeaderLabel();
 			ch.Text = DiscourseStrings.ksNotesColumnHeader;
-			view.Columns.Add(ch);
+			view.Controls.Add(ch);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ColumnHeader gets added to the Columns collection and disposed there")]
-		private void MakeTemplateColumnHeaders(ListView view)
+		private void MakeTemplateColumnHeaders(ChartHeaderView view)
 		{
-			foreach (var col in AllMyColumns)
+			foreach (var col in ChartIsRtL? AllMyColumns.Reverse() : AllMyColumns)
 			{
-				var ch = new ColumnHeader();
+				var ch = new HeaderLabel();
 
 				// ensure NFC -- See LT-8815.
 				//ch.Text = m_possRepo.GetObject(col.Hvo).Name.BestAnalysisAlternative.Text.Normalize();
 				ch.Text = col.Name.BestAnalysisAlternative.Text.Normalize();
-				if (ChartIsRtL)
-					view.Columns.Insert(1, ch); // should be safe because the Notes column will get added first.
-				else
-					view.Columns.Add(ch);
+				view.Controls.Add(ch);
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ColumnHeader gets added to the Columns collection and disposed there")]
-		private static void MakeRowNumberColumnHeader(ListView view)
+		private static void MakeRowNumberColumnHeader(ChartHeaderView view)
 		{
-			var ch = new ColumnHeader();
+			var ch = new HeaderLabel();
 			ch.Text = ""; // otherwise default is 'column header'!
-			view.Columns.Add(ch);
+			view.Controls.Add(ch);
 		}
 
 		/// <summary>
@@ -4337,7 +4365,7 @@ namespace SIL.FieldWorks.Discourse
 		}
 	}
 
-	class DepClauseMenuItem : ToolStripMenuItem
+	internal class DepClauseMenuItem : DisposableToolStripMenuItem
 	{
 		readonly ChartLocation m_srcCell;
 		readonly IConstChartRow[] m_depClauses;
@@ -4382,7 +4410,7 @@ namespace SIL.FieldWorks.Discourse
 		}
 	}
 
-	internal class RowColMenuItem : ToolStripMenuItem
+	internal class RowColMenuItem : DisposableToolStripMenuItem
 	{
 		readonly ChartLocation m_srcCell;
 
@@ -4423,7 +4451,7 @@ namespace SIL.FieldWorks.Discourse
 		}
 	}
 
-	class OneValMenuItem : ToolStripMenuItem
+	internal class OneValMenuItem : DisposableToolStripMenuItem
 	{
 		int m_colSrc;
 		public OneValMenuItem(string label, int colSrc)
@@ -4441,7 +4469,7 @@ namespace SIL.FieldWorks.Discourse
 		}
 	}
 
-	class TwoColumnMenuItem : ToolStripMenuItem
+	internal class TwoColumnMenuItem : DisposableToolStripMenuItem
 	{
 		int m_colDst;
 		int m_colSrc;
@@ -4526,7 +4554,7 @@ namespace SIL.FieldWorks.Discourse
 			m_mtmRepo = Cache.ServiceLocator.GetInstance<IConstChartMovedTextMarkerRepository>();
 		}
 
-		FdoCache Cache
+		LcmCache Cache
 		{
 			get { return m_logic.Cache; }
 		}
@@ -4947,7 +4975,7 @@ namespace SIL.FieldWorks.Discourse
 
 		#region PropertiesAndConstants
 
-		FdoCache Cache
+		LcmCache Cache
 		{
 			get { return m_logic.Cache; }
 		}
@@ -5219,7 +5247,7 @@ namespace SIL.FieldWorks.Discourse
 	#endregion // MakeMovedTextMethod
 
 	// used for user-defined markers
-	public class RowColPossibilityMenuItem : ToolStripMenuItem
+	public class RowColPossibilityMenuItem : DisposableToolStripMenuItem
 	{
 		private readonly ChartLocation m_srcCell;
 		internal int m_hvoPoss;

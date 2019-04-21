@@ -4,15 +4,15 @@
 
 using System;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.Utils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.DomainServices;
+using SIL.PlatformUtilities;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
@@ -49,7 +49,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <summary>
 		/// Constructor.
 		/// </summary>
-		public MSAPopupTreeManager(TreeCombo treeCombo, FdoCache cache, ICmPossibilityList list,
+		public MSAPopupTreeManager(TreeCombo treeCombo, LcmCache cache, ICmPossibilityList list,
 			int ws, bool useAbbr, Mediator mediator, XCore.PropertyTable propertyTable, Form parent)
 			: base(treeCombo, cache, mediator, propertyTable, list, ws, useAbbr, parent)
 		{
@@ -59,7 +59,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <summary>
 		/// Constructor.
 		/// </summary>
-		public MSAPopupTreeManager(PopupTree popupTree, FdoCache cache, ICmPossibilityList list,
+		public MSAPopupTreeManager(PopupTree popupTree, LcmCache cache, ICmPossibilityList list,
 			int ws, bool useAbbr, Mediator mediator, XCore.PropertyTable propertyTable, Form parent)
 			: base(popupTree, cache, mediator, propertyTable, list, ws, useAbbr, parent)
 		{
@@ -169,7 +169,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			if (msa == null)
 				match = AddNotSureItem(popupTree);
 			else
-				match = AddTreeNodeForMsa(popupTree, m_sense.Cache.TsStrFactory, msa);
+				match = AddTreeNodeForMsa(popupTree, msa);
 			return match;
 		}
 
@@ -184,7 +184,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			Debug.Assert(m_sense != null);
 			hvoTarget = m_sense.MorphoSyntaxAnalysisRA == null ? 0 : m_sense.MorphoSyntaxAnalysisRA.Hvo;
 			TreeNode match = null;
-			ITsStrFactory tsf = Cache.TsStrFactory;
 			bool fStem = m_sense.GetDesiredMsaType() == MsaType.kStem;
 			if (fStem /*m_sense.Entry.MorphoSyntaxAnalysesOC.Count != 0*/)
 			{
@@ -210,7 +209,7 @@ namespace SIL.FieldWorks.LexText.Controls
 				// Add the existing MSA items for the sense's owning entry.
 				foreach (var msa in m_sense.Entry.MorphoSyntaxAnalysesOC)
 				{
-					HvoTreeNode node = AddTreeNodeForMsa(popupTree, tsf, msa);
+					HvoTreeNode node = AddTreeNodeForMsa(popupTree, msa);
 					if (msa.Hvo == hvoTarget)
 						match = node;
 				}
@@ -237,7 +236,7 @@ namespace SIL.FieldWorks.LexText.Controls
 					//	2. "Specify..." command.
 					//Debug.Assert(hvoTarget == 0);
 					match = AddNotSureItem(popupTree);
-					popupTree.Nodes.Add(new HvoTreeNode(Cache.TsStrFactory.MakeString(m_sSpecifyGramFunc, Cache.WritingSystemFactory.UserWs), kCreate));
+					popupTree.Nodes.Add(new HvoTreeNode(TsStringUtils.MakeString(m_sSpecifyGramFunc, Cache.WritingSystemFactory.UserWs), kCreate));
 				}
 				else
 				{
@@ -257,7 +256,7 @@ namespace SIL.FieldWorks.LexText.Controls
 						HvoTreeNode node = new HvoTreeNode(tssLabel, hvoTarget);
 						popupTree.Nodes.Add(node);
 						match = node;
-						popupTree.Nodes.Add(new HvoTreeNode(Cache.TsStrFactory.MakeString(m_sModifyGramFunc, Cache.WritingSystemFactory.UserWs), kModify));
+						popupTree.Nodes.Add(new HvoTreeNode(TsStringUtils.MakeString(m_sModifyGramFunc, Cache.WritingSystemFactory.UserWs), kModify));
 						AddTimberLine(popupTree);
 					}
 					int cMsaExtra = 0;
@@ -276,20 +275,21 @@ namespace SIL.FieldWorks.LexText.Controls
 					//TreeNode empty = AddNotSureItem(popupTree, hvoTarget);
 					//if (match == null)
 					//    match = empty;
-					popupTree.Nodes.Add(new HvoTreeNode(Cache.TsStrFactory.MakeString(m_sSpecifyDifferent, Cache.WritingSystemFactory.UserWs), kCreate));
+					popupTree.Nodes.Add(new HvoTreeNode(TsStringUtils.MakeString(m_sSpecifyDifferent, Cache.WritingSystemFactory.UserWs), kCreate));
 				}
 			}
 			return match;
 		}
 
-		private HvoTreeNode AddTreeNodeForMsa(PopupTree popupTree, ITsStrFactory tsf, IMoMorphSynAnalysis msa)
+		private HvoTreeNode AddTreeNodeForMsa(PopupTree popupTree, IMoMorphSynAnalysis msa)
 		{
 			// JohnT: as described in LT-4633, a stem can be given an allomorph that
 			// is an affix. So we need some sort of way to handle this.
 			//Debug.Assert(msa is MoStemMsa);
 			ITsString tssLabel = msa.InterlinearNameTSS;
-			if (msa is IMoStemMsa && (msa as IMoStemMsa).PartOfSpeechRA == null)
-				tssLabel = tsf.MakeString(
+			var stemMsa = msa as IMoStemMsa;
+			if (stemMsa != null && stemMsa.PartOfSpeechRA == null)
+				tssLabel = TsStringUtils.MakeString(
 					m_sUnknown,
 					Cache.ServiceLocator.WritingSystemManager.UserWs);
 			var node = new HvoTreeNode(tssLabel, msa.Hvo);
@@ -344,8 +344,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			});
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="GetPopupTree() returns a reference")]
 		private void ChooseFromMasterCategoryList()
 		{
 			PopupTree pt = GetPopupTree();
@@ -371,11 +369,14 @@ namespace SIL.FieldWorks.LexText.Controls
 			// This is at least required if the user selects "Cancel" from the dialog below.
 			if (m_sense.MorphoSyntaxAnalysisRA != null)
 				pt.SelectObj(m_sense.MorphoSyntaxAnalysisRA.Hvo);
-#if __MonoCS__
-			// If Popup tree is shown whilest the dialog is shown, the first click on the dialog is consumed by the
-			// Popup tree, (and closes it down). On .NET the PopupTree appears to be automatically closed.
-			pt.HideForm();
-#endif
+
+			if (Platform.IsMono)
+			{
+				// If Popup tree is shown whilest the dialog is shown, the first click on the dialog is consumed by the
+				// Popup tree, (and closes it down). On .NET the PopupTree appears to be automatically closed.
+				pt.HideForm();
+			}
+
 			using (MsaCreatorDlg dlg = new MsaCreatorDlg())
 			{
 				SandboxGenericMSA dummyMsa = new SandboxGenericMSA();
@@ -403,11 +404,14 @@ namespace SIL.FieldWorks.LexText.Controls
 			// This is at least required if the user selects "Cancel" from the dialog below.
 			if (m_sense.MorphoSyntaxAnalysisRA != null)
 				pt.SelectObj(m_sense.MorphoSyntaxAnalysisRA.Hvo);
-#if __MonoCS__
-			// If Popup tree is shown whilest the dialog is shown, the first click on the dialog is consumed by the
-			// Popup tree, (and closes it down). On .NET the PopupTree appears to be automatically closed.
-			pt.HideForm();
-#endif
+
+			if (Platform.IsMono)
+			{
+				// If Popup tree is shown whilest the dialog is shown, the first click on the dialog is consumed by the
+				// Popup tree, (and closes it down). On .NET the PopupTree appears to be automatically closed.
+				pt.HideForm();
+			}
+
 			SandboxGenericMSA dummyMsa = SandboxGenericMSA.Create(m_sense.MorphoSyntaxAnalysisRA);
 			using (MsaCreatorDlg dlg = new MsaCreatorDlg())
 			{
@@ -431,8 +435,6 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// This is an attempt to avoid LT-11548 where the MSAPopupTreeManager was being disposed
 	/// under certain circumstances while it was still processing AfterSelect messages.
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="m_parentOfPopupMgr, m_mediator, and Cache are references")]
 	public class MasterCategoryListChooserLauncher
 	{
 		private readonly ILexSense m_sense;
@@ -457,7 +459,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		public ICmPossibilityList CategoryList { get; private set; }
 		public string FieldName { get; private set; }
-		public FdoCache Cache { get; private set; }
+		public LcmCache Cache { get; private set; }
 
 		void LaunchChooseFromMasterCategoryListOnIdle(object sender, EventArgs e)
 		{

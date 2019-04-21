@@ -4,12 +4,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
+using SIL.Extensions;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.FieldWorks.Common.RootSites;
+using SIL.FieldWorks.Common.Widgets;
+using SIL.LCModel;
+using SIL.LCModel.DomainImpl;
+using SIL.FieldWorks.FwCoreDlgs;
+using SIL.FieldWorks.XWorks.LexText;
+using SIL.LCModel.Core.WritingSystems;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks
@@ -89,7 +96,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// Get the base (non-localized) name of the area in FLEx being configured, such as Dictionary or Reversal Index.
 		/// </summary>
-		internal static string GetDictionaryConfigurationBaseType(PropertyTable propertyTable)
+		internal static string GetDictionaryConfigurationBaseType(IPropertyRetriever propertyTable)
 		{
 			var toolName = propertyTable.GetStringProperty("currentContentControl", null);
 			switch (toolName)
@@ -136,8 +143,8 @@ namespace SIL.FieldWorks.XWorks
 		/// <remarks>Useful for querying about an area of FLEx that the user is not in.</remarks>
 		internal static string GetProjectConfigurationDirectory(PropertyTable propertyTable, string area)
 		{
-			var cache = propertyTable.GetValue<FdoCache>("cache");
-			return area == null ? null : Path.Combine(FdoFileHelper.GetConfigSettingsDir(cache.ProjectId.ProjectFolder), area);
+			var cache = propertyTable.GetValue<LcmCache>("cache");
+			return area == null ? null : Path.Combine(LcmFileHelper.GetConfigSettingsDir(cache.ProjectId.ProjectFolder), area);
 		}
 
 		/// <summary>
@@ -163,7 +170,7 @@ namespace SIL.FieldWorks.XWorks
 		/// Get the name of the innermost directory name for configurations for the part of FLEx the user is
 		/// working in, such as Dictionary or Reversal Index.
 		/// </summary>
-		private static string GetInnermostConfigurationDirectory(PropertyTable propertyTable)
+		private static string GetInnermostConfigurationDirectory(IPropertyRetriever propertyTable)
 		{
 			switch(propertyTable.GetStringProperty("currentContentControl", null))
 			{
@@ -190,7 +197,7 @@ namespace SIL.FieldWorks.XWorks
 			using (var dlg = new DictionaryConfigurationDlg(m_propertyTable))
 			{
 				var clerk = m_propertyTable.GetValue<RecordClerk>("ActiveClerk", null);
-				var controller = new DictionaryConfigurationController(dlg, m_propertyTable, clerk != null ? clerk.CurrentObject : null);
+				var controller = new DictionaryConfigurationController(dlg, m_propertyTable, m_mediator, clerk != null ? clerk.CurrentObject : null);
 				dlg.Text = String.Format(xWorksStrings.ConfigureTitle, GetDictionaryConfigurationType(m_propertyTable));
 				dlg.HelpTopic = GetConfigDialogHelpTopic(m_propertyTable);
 				dlg.ShowDialog(m_propertyTable.GetValue<IWin32Window>("window"));
@@ -228,6 +235,26 @@ namespace SIL.FieldWorks.XWorks
 			return GetCurrentConfiguration(propertyTable, true, innerConfigDir);
 		}
 
+		private static void SetConfigureHomographParameters(string currentConfig, LcmCache cache)
+		{
+			var model = new DictionaryConfigurationModel(currentConfig, cache);
+			DictionaryConfigurationController.SetConfigureHomographParameters(model, cache);
+		}
+
+
+		/// <summary>
+		/// If we are in a tool handled by the new configuration then hide this to avoid confusion with the new dialog
+		/// which is accessible from each configuration file.
+		/// </summary>
+		public virtual bool OnDisplayConfigureHeadwordNumbers(object commandObject,
+																		 ref UIItemDisplayProperties display)
+		{
+			// If we are in 'Dictionary' or 'Reversal Index' hide this menu item
+			display.Enabled = false;
+			display.Visible = false;
+			return true; // we handled it
+		}
+
 		/// <summary>
 		/// Returns the path to the current Dictionary or ReversalIndex configuration file, based on client specification or the current tool
 		/// Guarantees that the path is set to an existing configuration file, which may cause a redisplay of the XHTML view if fUpdate is true.
@@ -241,12 +268,18 @@ namespace SIL.FieldWorks.XWorks
 			if (innerConfigDir == null)
 			{
 				innerConfigDir = GetInnermostConfigurationDirectory(propertyTable);
+				if (innerConfigDir == null)
+					innerConfigDir = ReversalIndexServices.RevIndexDir;
 			}
 			var isDictionary = innerConfigDir == DictionaryConfigurationDirectoryName;
 			var pubLayoutPropName = isDictionary ? "DictionaryPublicationLayout" : "ReversalIndexPublicationLayout";
 			var currentConfig = propertyTable.GetStringProperty(pubLayoutPropName, string.Empty);
+			var cache = propertyTable.GetValue<LcmCache>("cache");
 			if (!string.IsNullOrEmpty(currentConfig) && File.Exists(currentConfig))
+			{
+				SetConfigureHomographParameters(currentConfig, cache);
 				return currentConfig;
+			}
 			var defaultPublication = isDictionary ? "Root" : "AllReversalIndexes";
 			var defaultConfigDir = GetDefaultConfigurationDirectory(innerConfigDir);
 			var projectConfigDir = GetProjectConfigurationDirectory(propertyTable, innerConfigDir);
@@ -257,7 +290,6 @@ namespace SIL.FieldWorks.XWorks
 				var selectedPublication = currentConfig.Replace("publish", string.Empty);
 				if (!isDictionary)
 				{
-					var cache = propertyTable.GetValue<FdoCache>("cache");
 					var languageCode = selectedPublication.Replace("Reversal-", string.Empty);
 					selectedPublication = cache.ServiceLocator.WritingSystemManager.Get(languageCode).DisplayLabel;
 				}
@@ -270,6 +302,15 @@ namespace SIL.FieldWorks.XWorks
 			}
 			if (!File.Exists(currentConfig))
 			{
+				if (defaultPublication == "AllReversalIndexes")
+				{
+					// check in projectConfigDir for files whose name = default analysis ws
+					if (TryMatchingReversalConfigByWritingSystem(projectConfigDir, cache, out currentConfig))
+					{
+						propertyTable.SetProperty(pubLayoutPropName, currentConfig, fUpdate);
+						return currentConfig;
+					}
+				}
 				// select the project's Root configuration if available; otherwise, select the default Root configuration
 				currentConfig = Path.Combine(projectConfigDir, defaultPublication + DictionaryConfigurationModel.FileExtension);
 				if (!File.Exists(currentConfig))
@@ -277,9 +318,24 @@ namespace SIL.FieldWorks.XWorks
 					currentConfig = Path.Combine(defaultConfigDir, defaultPublication + DictionaryConfigurationModel.FileExtension);
 				}
 			}
-			Debug.Assert(File.Exists(currentConfig));
-			propertyTable.SetProperty(pubLayoutPropName, currentConfig, fUpdate);
+			if (File.Exists(currentConfig))
+			{
+				propertyTable.SetProperty(pubLayoutPropName, currentConfig, fUpdate);
+			}
+			else
+			{
+				propertyTable.RemoveProperty(pubLayoutPropName);
+			}
 			return currentConfig;
+		}
+
+		private static bool TryMatchingReversalConfigByWritingSystem(string projectConfigDir, LcmCache cache, out string currentConfig)
+		{
+			var wsId = cache.LangProject.DefaultAnalysisWritingSystem.Id;
+			var fileList = Directory.EnumerateFiles(projectConfigDir);
+			var fileName = fileList.FirstOrDefault(fname => Path.GetFileNameWithoutExtension(fname) == wsId);
+			currentConfig = fileName ?? string.Empty;
+			return !string.IsNullOrEmpty(currentConfig);
 		}
 
 		/// <summary>
@@ -291,6 +347,35 @@ namespace SIL.FieldWorks.XWorks
 				? "DictionaryPublicationLayout"
 				: "ReversalIndexPublicationLayout";
 			propertyTable.SetProperty(pubLayoutPropName, currentConfig, fUpdate);
+		}
+
+		public bool OnWritingSystemUpdated(object param)
+		{
+			if (param == null)
+				return false;
+
+			var currentConfig = GetCurrentConfiguration(m_propertyTable, true, null);
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
+			var configuration = new DictionaryConfigurationModel(currentConfig, cache);
+			DictionaryConfigurationController.UpdateWritingSystemInModel(configuration, cache);
+			configuration.Save();
+
+			return true;
+		}
+
+		public bool OnWritingSystemDeleted(object param)
+		{
+			var currentConfig = GetCurrentConfiguration(m_propertyTable, true, null);
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
+			var configuration = new DictionaryConfigurationModel(currentConfig, cache);
+			if (configuration.HomographConfiguration != null && ((string[])param).Any(x => x.ToString() == configuration.HomographConfiguration.HomographWritingSystem))
+			{
+				configuration.HomographConfiguration.HomographWritingSystem = string.Empty;
+				configuration.HomographConfiguration.CustomHomographNumbers = string.Empty;
+				configuration.Save();
+				m_mediator.SendMessage("MasterRefresh", null);
+			}
+			return true;
 		}
 
 		private static string GetInnerConfigDir(string configFilePath)

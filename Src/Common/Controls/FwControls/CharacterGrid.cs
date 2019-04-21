@@ -1,23 +1,21 @@
-// Copyright (c) 2004-2013 SIL International
+// Copyright (c) 2004-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: CharacterGrid.cs
-// Responsibility: TE Team
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.Utils;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 
 namespace SIL.FieldWorks.Common.Controls
 {
@@ -26,28 +24,30 @@ namespace SIL.FieldWorks.Common.Controls
 	///
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	public class CharacterGrid : DataGridView, IFWDisposable
+	public class CharacterGrid : DataGridView
 	{
-#if !__MonoCS__
-		[DllImport("gdi32.dll", CharSet=CharSet.Auto)]
-		private static extern uint GetGlyphIndices(IntPtr hdc, string lpstr, int c,
+		[DllImport("gdi32.dll", CharSet=CharSet.Auto, EntryPoint = "GetGlyphIndices")]
+		private static extern uint GetGlyphIndicesWindows(IntPtr hdc, string lpstr, int c,
 			[In, Out] ushort[] pgi, int fl);
-#else
+
 		private static uint GetGlyphIndices(IntPtr hdc, string lpstr, int c, [In, Out] ushort[] pgi, int fl)
 		{
+			if (Platform.IsWindows)
+				return GetGlyphIndicesWindows(hdc, lpstr, c, pgi, fl);
+
 			throw new NotImplementedException();
 		}
-#endif
 
-#if !__MonoCS__
 		[DllImport("gdi32.dll", EntryPoint="SelectObject")]
-		private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hfont);
-#else
+		private static extern IntPtr SelectObjectWindows(IntPtr hdc, IntPtr hfont);
+
 		private static IntPtr SelectObject(IntPtr hdc, IntPtr hfont)
 		{
+			if (Platform.IsWindows)
+				return SelectObjectWindows(hdc, hfont);
+
 			throw new NotImplementedException();
 		}
-#endif
 
 		/// <summary>Handler for character changed event.</summary>
 		public delegate void CharacterChangedHandler(CharacterGrid grid, string newCharacter);
@@ -61,7 +61,6 @@ namespace SIL.FieldWorks.Common.Controls
 		private int m_cellWidth = 40;
 		private int m_cellHeight = 45;
 		private bool m_loadCharactersFromFont = true;
-		private ILgCharacterPropertyEngine m_cpe;
 		private Font m_fntForSpecialChar;
 		private CharacterInfoToolTip m_toolTip;
 		private IComparer m_sortComparer = null;
@@ -81,8 +80,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// Initializes a new instance of the <see cref="CharacterGrid"/> class.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="Added a TODO-Linux comment")]
 		public CharacterGrid()
 		{
 			DoubleBuffered = true;
@@ -353,31 +350,6 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 		}
 
-		/// ------------------------------------------------------------------------------------
-		/// <summary>
-		/// Gets or sets the ILgCharacterPropertyEngine used when loading the grid from a font.
-		/// </summary>
-		/// ------------------------------------------------------------------------------------
-		[Browsable(false)]
-		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-		public ILgCharacterPropertyEngine CharPropEngine
-		{
-			get { CheckDisposed(); return m_cpe; }
-			set
-			{
-				CheckDisposed();
-				if (m_cpe != value)
-				{
-					m_cpe = value;
-					if (IsHandleCreated)
-					{
-						RemoveAllCharacters();
-						LoadGrid();
-					}
-				}
-			}
-		}
-
 		#endregion
 
 		#region Public methods
@@ -418,7 +390,7 @@ namespace SIL.FieldWorks.Common.Controls
 				if (m_charsWithMissingGlyphs.Contains(chr))
 					m_charsWithMissingGlyphs.Remove(chr);
 			}
-			else if (!Icu.IsControl(chr[0]))
+			else if (!Icu.Character.IsControl(chr[0]))
 			{
 				if (!m_charsWithMissingGlyphs.Contains(chr))
 					m_charsWithMissingGlyphs.Add(chr);
@@ -427,7 +399,7 @@ namespace SIL.FieldWorks.Common.Controls
 			// If we're dealing with a type of space or control character, then figure out
 			// display text that is slightly more readable than whatever glyph the font
 			// contains for the character, which may not be a glyph at all.
-			if ((Icu.IsSpace(chr[0]) || Icu.IsControl(chr[0])) &&
+			if ((Icu.Character.IsSpace(chr[0]) || Icu.Character.IsControl(chr[0])) &&
 				!m_specialCharStrings.ContainsKey(chr))
 			{
 				m_specialCharStrings[chr] = GetSpecialCharDisplayText(chr);
@@ -924,21 +896,8 @@ namespace SIL.FieldWorks.Common.Controls
 			if (ch == StringUtils.kChObject || ch == StringUtils.kchReplacement)
 				return false;
 
-			if (m_cpe == null)
-			{
-				return ((m_fSymbolCharSet || !char.IsLetterOrDigit(ch)) &&
-					!char.IsWhiteSpace(ch) && !char.IsControl(ch));
-			}
-
-			UcdProperty ucdProp = UcdProperty.GetInstance(m_cpe.get_GeneralCategory(ch));
-			string sUcdRep = ucdProp.UcdRepresentation;
-
-			if (string.IsNullOrEmpty(sUcdRep))
-				return false;
-
-			char charCat = sUcdRep.ToUpperInvariant()[0];
-			return charCat == 'S' || charCat == 'P' ||
-				(m_fSymbolCharSet && (charCat == 'L' || charCat == 'N'));
+			return Icu.Character.IsSymbol(ch) || Icu.Character.IsPunct(ch) ||
+				m_fSymbolCharSet && (Icu.Character.IsLetter(ch) || Icu.Character.IsNumeric(ch));
 		}
 
 		/// ------------------------------------------------------------------------------------

@@ -8,17 +8,17 @@ using System.Linq;
 using System.Windows.Forms;
 using NUnit.Framework;
 using Rhino.Mocks;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.FDOTests;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.FieldWorks.Test.TestUtils;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
 using SIL.WritingSystems;
 using XCore;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.IText
 {
@@ -28,7 +28,7 @@ namespace SIL.FieldWorks.IText
 	[TestFixture]
 	public class FocusBoxControllerTests : MemoryOnlyBackendProviderTestBase
 	{
-		FDO.IText m_text0;
+		LCModel.IText m_text0;
 		private IStText m_stText0;
 		private IStTxtPara m_para0_0;
 		//private TestableInterlinDocForAnalyis m_interlinDoc;
@@ -64,7 +64,7 @@ namespace SIL.FieldWorks.IText
 			m_stText0 = stTextFactory.Create();
 			m_text0.ContentsOA = m_stText0;
 			m_para0_0 = m_stText0.AddNewTextPara(null);
-			m_para0_0.Contents = TsStringUtils.MakeTss("Xxxhope xxxthis xxxwill xxxdo. xxxI xxxhope.", wsXkal.Handle);
+			m_para0_0.Contents = TsStringUtils.MakeString("Xxxhope xxxthis xxxwill xxxdo. xxxI xxxhope.", wsXkal.Handle);
 
 			InterlinMaster.LoadParagraphAnnotationsAndGenerateEntryGuessesIfNeeded(m_stText0, false);
 			// paragraph 0_0 simply has wordforms as analyses
@@ -209,7 +209,7 @@ namespace SIL.FieldWorks.IText
 
 			m_interlinDoc.OnAddWordGlossesToFreeTrans(null);
 
-			AssertEx.AreTsStringsEqual(TsStringUtils.MakeTss("hope this works.", Cache.DefaultAnalWs),
+			AssertEx.AreTsStringsEqual(TsStringUtils.MakeString("hope this works.", Cache.DefaultAnalWs),
 				seg.FreeTranslation.AnalysisDefaultWritingSystem);
 		}
 
@@ -296,8 +296,8 @@ namespace SIL.FieldWorks.IText
 			Cache = testText.Cache;
 			m_hvoRoot = testText.Hvo;
 			m_testText = testText;
-			m_vc = new InterlinVc(Cache);
-			m_vc.RootSite = this;
+			Vc = new InterlinVc(Cache);
+			Vc.RootSite = this;
 		}
 
 		protected override FocusBoxController CreateFocusBoxInternal()
@@ -339,7 +339,7 @@ namespace SIL.FieldWorks.IText
 		/// ------------------------------------------------------------------------------------
 		internal void CallSetActiveFreeform(int hvoSeg, int ws)
 		{
-			ReflectionHelper.CallMethod(m_vc, "SetActiveFreeform", hvoSeg,
+			ReflectionHelper.CallMethod(Vc, "SetActiveFreeform", hvoSeg,
 				SegmentTags.kflidFreeTranslation, ws, 0);
 		}
 	}
@@ -437,6 +437,12 @@ namespace SIL.FieldWorks.IText
 		{
 			CurrentAnalysisTree = new AnalysisTree();
 			NewAnalysisTree = new AnalysisTree();
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + " ******");
+			base.Dispose(disposing);
 		}
 
 		#region IAnalysisControlInternal Members

@@ -8,11 +8,10 @@ using System.Linq;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainImpl;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainImpl;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.FwCoreDlgs;
-using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
@@ -24,8 +23,8 @@ namespace SIL.FieldWorks.LexText.Controls
 		}
 
 		private HomographConfiguration m_homographConfiguration;
-		private FdoCache m_cache;
-		FwStyleSheet m_stylesheet;
+		private LcmCache m_cache;
+		LcmStyleSheet m_stylesheet;
 		private IApp m_app;
 		private IHelpTopicProvider m_helpTopicProvider;
 		protected HelpProvider m_helpProvider;
@@ -34,7 +33,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		private bool m_masterRefreshRequired;
 
-		public void SetupDialog(HomographConfiguration hc, FdoCache cache, FwStyleSheet stylesheet, IApp app,
+		public void SetupDialog(HomographConfiguration hc, LcmCache cache, LcmStyleSheet stylesheet, IApp app,
 			IHelpTopicProvider helpTopicProvider)
 		{
 			SetHelpTopic("khtpConfigureHeadwordNumbers"); // Default help topic ID
@@ -58,7 +57,6 @@ namespace SIL.FieldWorks.LexText.Controls
 				m_radioHide.Checked = false;
 				m_radioBefore.Checked = hc.HomographNumberBefore;
 				m_radioAfter.Checked = !hc.HomographNumberBefore;
-				m_chkShowSenseNumInDict.Checked = hc.ShowSenseNumberRef;
 				m_chkShowSenseNumInReversal.Checked = hc.ShowSenseNumberReversal;
 			}
 			else
@@ -66,11 +64,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				m_radioHide.Checked = true;
 				m_radioBefore.Checked = false;
 				m_radioAfter.Checked = false;
-				m_chkShowSenseNumInDict.Checked = false;
 				m_chkShowSenseNumInReversal.Checked = false;
 			}
-			m_chkShowHomographNumInDict.Checked =
-				hc.ShowHomographNumber(HomographConfiguration.HeadwordVariant.DictionaryCrossRef);
 			m_chkShowHomographNumInReversal.Checked =
 				hc.ShowHomographNumber(HomographConfiguration.HeadwordVariant.ReversalCrossRef);
 			EnableControls();
@@ -84,12 +79,9 @@ namespace SIL.FieldWorks.LexText.Controls
 			if (DialogResult == DialogResult.OK)
 			{
 				m_homographConfiguration.SetShowHomographNumber(HomographConfiguration.HeadwordVariant.Main, !m_radioHide.Checked);
-				m_homographConfiguration.SetShowHomographNumber(HomographConfiguration.HeadwordVariant.DictionaryCrossRef,
-					!m_radioHide.Checked && m_chkShowHomographNumInDict.Checked);
 				m_homographConfiguration.SetShowHomographNumber(HomographConfiguration.HeadwordVariant.ReversalCrossRef,
 					!m_radioHide.Checked && m_chkShowHomographNumInReversal.Checked);
 				m_homographConfiguration.HomographNumberBefore = m_radioBefore.Checked;
-				m_homographConfiguration.ShowSenseNumberRef = !m_radioHide.Checked && m_chkShowSenseNumInDict.Checked;
 				m_homographConfiguration.ShowSenseNumberReversal = !m_radioHide.Checked && m_chkShowSenseNumInReversal.Checked;
 			}
 			base.OnClosing(e);
@@ -109,15 +101,11 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		void EnableControls()
 		{
-			m_chkShowHomographNumInDict.Enabled = !m_radioHide.Checked;
 			m_chkShowHomographNumInReversal.Enabled = !m_radioHide.Checked;
-			m_chkShowSenseNumInDict.Enabled = !m_radioHide.Checked;
 			m_chkShowSenseNumInReversal.Enabled = !m_radioHide.Checked;
 			if (m_radioHide.Checked)
 			{
-				m_chkShowHomographNumInDict.Checked = false;
 				m_chkShowHomographNumInReversal.Checked = false;
-				m_chkShowSenseNumInDict.Checked = false;
 				m_chkShowSenseNumInReversal.Checked = false;
 			}
 		}
@@ -166,7 +154,7 @@ namespace SIL.FieldWorks.LexText.Controls
 				if (dlg.ShowDialog(this) == DialogResult.OK && dlg.ChangeType != StyleChangeType.None)
 				{
 					m_app.Synchronize(SyncMsg.ksyncStyle);
-					FwStyleSheet stylesheet = new FwStyleSheet();
+					LcmStyleSheet stylesheet = new LcmStyleSheet();
 					stylesheet.Init(m_cache, m_cache.LangProject.Hvo, LangProjectTags.kflidStyles);
 					m_stylesheet = stylesheet;
 					m_masterRefreshRequired = true;

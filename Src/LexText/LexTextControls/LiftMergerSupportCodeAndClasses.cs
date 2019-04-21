@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -14,11 +13,14 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
 using SIL.Lift.Parsing;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using SIL.WritingSystems;
 
@@ -65,6 +67,9 @@ namespace SIL.FieldWorks.LexText.Controls
 											 m_dictExceptFeats);
 				}
 			}
+			if (m_cache.LangProject.LexDbOA.DialectLabelsOA != null)
+				InitializePossibilityMap(m_cache.LangProject.LexDbOA.DialectLabelsOA.PossibilitiesOS,
+										 m_dictDialect);
 			if (m_cache.LangProject.LexDbOA.DomainTypesOA != null)
 				InitializePossibilityMap(m_cache.LangProject.LexDbOA.DomainTypesOA.PossibilitiesOS,
 										 m_dictDomainType);
@@ -83,6 +88,9 @@ namespace SIL.FieldWorks.LexText.Controls
 			if (m_cache.LangProject.LocationsOA != null)
 				InitializePossibilityMap(m_cache.LangProject.LocationsOA.PossibilitiesOS,
 										 m_dictLocation);
+			if (m_cache.LangProject.LexDbOA.LanguagesOA != null)
+				InitializePossibilityMap(m_cache.LangProject.LexDbOA.LanguagesOA.PossibilitiesOS,
+										 m_dictLanguage);
 			if (m_cache.LangProject.PhonologicalDataOA != null)
 			{
 				foreach (IPhEnvironment env in m_cache.LangProject.PhonologicalDataOA.EnvironmentsOS)
@@ -111,7 +119,7 @@ namespace SIL.FieldWorks.LexText.Controls
 										 m_dictLexRefTypes);
 		}
 
-		private void InitializePossibilityMap(IFdoOwningSequence<ICmPossibility> possibilities,
+		private void InitializePossibilityMap(ILcmOwningSequence<ICmPossibility> possibilities,
 			Dictionary<string, ICmPossibility> dict)
 		{
 			if (possibilities == null)
@@ -173,7 +181,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// </summary>
 		/// <param name="possibilities"></param>
 		/// <param name="dict"></param>
-		private void EnhancePossibilityMapForWeSay(IFdoOwningSequence<ICmPossibility> possibilities,
+		private void EnhancePossibilityMapForWeSay(ILcmOwningSequence<ICmPossibility> possibilities,
 			Dictionary<string, ICmPossibility> dict)
 		{
 			foreach (ICmPossibility poss in possibilities)
@@ -249,18 +257,18 @@ namespace SIL.FieldWorks.LexText.Controls
 						{
 							string sPath = Path.Combine(Path.GetDirectoryName(m_sLiftFile),
 								String.Format("audio{0}{1}", Path.DirectorySeparatorChar, form));
-							CopyFileToLinkedFiles(form, sPath, FdoFileHelper.ksMediaDir);
+							CopyFileToLinkedFiles(form, sPath, LcmFileHelper.ksMediaDir);
 						}
 						else
 						{
 							sAllo = StripAlloForm(form, clsidForm, guidEntry, flid);
 						}
-						tsm.set_String(wsHvo, m_cache.TsStrFactory.MakeString(sAllo, wsHvo));
+						tsm.set_String(wsHvo, TsStringUtils.MakeString(sAllo, wsHvo));
 					}
 				}
 			}
 			foreach (int ws in multi.Keys)
-				tsm.set_String(ws, (ITsString)null);
+				tsm.set_String(ws, null);
 		}
 
 		private string StripAlloForm(string form, int clsidForm, Guid guidEntry, int flid)
@@ -333,7 +341,7 @@ namespace SIL.FieldWorks.LexText.Controls
 						{
 							string sPath = Path.Combine(Path.GetDirectoryName(m_sLiftFile),
 								String.Format("audio{0}{1}", Path.DirectorySeparatorChar, tss.Text));
-							CopyFileToLinkedFiles(tss.Text, sPath, FdoFileHelper.ksMediaDir);
+							CopyFileToLinkedFiles(tss.Text, sPath, LcmFileHelper.ksMediaDir);
 						}
 					}
 				}
@@ -350,16 +358,16 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <returns></returns>
 		private ITsString CreateTsStringFromLiftString(LiftString liftstr, int wsHvo)
 		{
-			ITsStrBldr tsb = m_cache.TsStrFactory.GetBldr();
+			ITsStrBldr tsb = TsStringUtils.MakeStrBldr();
 			// LiftString parameter may have come in with escaped characters which need to be
 			// converted to plain text before comparing with existing entries
 			var convertSafeXmlToText = XmlUtils.DecodeXml(liftstr.Text);
-			tsb.Replace(0, tsb.Length, convertSafeXmlToText, m_tpf.MakeProps(null, wsHvo, 0));
+			tsb.Replace(0, tsb.Length, convertSafeXmlToText, TsStringUtils.MakeProps(null, wsHvo));
 			int wsSpan;
 			// TODO: handle nested spans.
 			foreach (LiftSpan span in liftstr.Spans)
 			{
-				ITsPropsBldr tpb = m_tpf.GetPropsBldr();
+				ITsPropsBldr tpb = TsStringUtils.MakePropsBldr();
 				if (String.IsNullOrEmpty(span.Lang))
 					wsSpan = wsHvo;
 				else
@@ -377,7 +385,7 @@ namespace SIL.FieldWorks.LexText.Controls
 						|| linkPath.StartsWith("others" + Path.DirectorySeparatorChar))
 					{
 						linkPath = CopyFileToLinkedFiles(linkPath.Substring("others/".Length), sPath,
-							FdoFileHelper.ksOtherLinkedFilesDir);
+							LcmFileHelper.ksOtherLinkedFilesDir);
 					}
 					char chOdt = Convert.ToChar((int)FwObjDataTypes.kodtExternalPathName);
 					string sRef = chOdt.ToString() + linkPath;
@@ -419,11 +427,11 @@ namespace SIL.FieldWorks.LexText.Controls
 						{
 							ITsString tss = tsm.get_String(wsHvo);
 							if (tss == null || tss.Length == 0)
-								tsm.set_String(wsHvo, m_cache.TsStrFactory.MakeString(sText, wsHvo));
+								tsm.set_String(wsHvo, TsStringUtils.MakeString(sText, wsHvo));
 						}
 						else
 						{
-							tsm.set_String(wsHvo, m_cache.TsStrFactory.MakeString(sText, wsHvo));
+							tsm.set_String(wsHvo, TsStringUtils.MakeString(sText, wsHvo));
 						}
 					}
 				}
@@ -590,8 +598,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				return false;
 			if (sNew == null)
 				return false;
-			string sNewNorm = Icu.Normalize(sNew, Icu.UNormalizationMode.UNORM_NFD);
-			string sOldNorm = Icu.Normalize(sOld, Icu.UNormalizationMode.UNORM_NFD);
+			string sNewNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sNew);
+			string sOldNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sOld);
 			return sNewNorm != sOldNorm;
 		}
 
@@ -632,8 +640,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				if (tssOld == null || tssOld.Length == 0)
 					continue;
 				string sOld = tssOld.Text;
-				string sNewNorm = Icu.Normalize(sNew, Icu.UNormalizationMode.UNORM_NFD);
-				string sOldNorm = Icu.Normalize(sOld, Icu.UNormalizationMode.UNORM_NFD);
+				string sNewNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sNew);
+				string sOldNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sOld);
 				if (sNewNorm != sOldNorm)
 					return true;
 			}
@@ -697,8 +705,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				string sNew = XmlUtils.DecodeXml(lmt[key].Text);
 				if (fStripMarkers)
 					sNew = StripAlloForm(sNew, 0, guidEntry, flid);
-				string sNewNorm = Icu.Normalize(sNew, Icu.UNormalizationMode.UNORM_NFD);
-				string sOldNorm = Icu.Normalize(sOld, Icu.UNormalizationMode.UNORM_NFD);
+				string sNewNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sNew);
+				string sOldNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sOld);
 				if (sNewNorm == sOldNorm)
 					++cMatches;
 			}
@@ -755,8 +763,8 @@ namespace SIL.FieldWorks.LexText.Controls
 					return false;
 				// LiftMultiText parameter may have come in with escaped characters which need to be
 				// converted to plain text before comparing with existing entries
-				string sNewNorm = XmlUtils.DecodeXml(Icu.Normalize(sNew, Icu.UNormalizationMode.UNORM_NFD));
-				string sOldNorm = Icu.Normalize(tssOld.Text, Icu.UNormalizationMode.UNORM_NFD);
+				string sNewNorm = XmlUtils.DecodeXml(CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(sNew));
+				string sOldNorm = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(tssOld.Text);
 				if (sNewNorm != sOldNorm)
 					return false;
 			}
@@ -805,7 +813,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="tss">The string.</param>
 		/// <param name="cache">The cache.</param>
 		/// <returns></returns>
-		public string TsStringAsHtml(ITsString tss, FdoCache cache)
+		public string TsStringAsHtml(ITsString tss, LcmCache cache)
 		{
 			StringBuilder sb = new StringBuilder();
 			int crun = tss.RunCount;
@@ -930,7 +938,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// move it from ImportResidue to LiftResidue.
 		/// </summary>
 		/// <returns>string containing any LIFT import residue found in ImportResidue</returns>
-		private static string ExtractLIFTResidue(FdoCache cache, int hvo, int flidImportResidue,
+		private static string ExtractLIFTResidue(LcmCache cache, int hvo, int flidImportResidue,
 			int flidLiftResidue)
 		{
 			Debug.Assert(flidLiftResidue != 0);
@@ -1304,8 +1312,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void StoreResidueFromVariant(ICmObject extensible, CmLiftVariant var)
 		{
 			XmlDocument xdResidue = FindOrCreateResidue(extensible);
@@ -1587,9 +1593,9 @@ namespace SIL.FieldWorks.LexText.Controls
 				case CellarPropertyType.Image:
 				case CellarPropertyType.GenDate:
 				case CellarPropertyType.Binary:
+				case CellarPropertyType.String:
 					clidDst = -1;
 					break;
-				case CellarPropertyType.String:
 				case CellarPropertyType.Unicode:
 				case CellarPropertyType.MultiString:
 				case CellarPropertyType.MultiUnicode:
@@ -1780,11 +1786,12 @@ namespace SIL.FieldWorks.LexText.Controls
 		private static int FindAbbevOrLabelInDict(LiftMultiText abbrev, LiftMultiText label,
 			Dictionary<string, ICmPossibility> dict)
 		{
+			var normalizer = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD);
 			if (abbrev != null && abbrev.Keys != null)
 			{
 				foreach (string key in abbrev.Keys)
 				{
-					var text = Icu.Normalize(XmlUtils.DecodeXml(abbrev[key].Text), Icu.UNormalizationMode.UNORM_NFD);
+					var text = normalizer.Normalize(XmlUtils.DecodeXml(abbrev[key].Text));
 					if (dict.ContainsKey(text))
 						return dict[text].Hvo;
 				}
@@ -1793,7 +1800,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			{
 				foreach (string key in label.Keys)
 				{
-					var text = Icu.Normalize(XmlUtils.DecodeXml(label[key].Text), Icu.UNormalizationMode.UNORM_NFD);
+					var text = normalizer.Normalize(XmlUtils.DecodeXml(label[key].Text));
 					if (dict.ContainsKey(text))
 						return dict[text].Hvo;
 				}
@@ -1842,7 +1849,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="list"></param>
 		private void ProcessPossibility(string id, string guidAttr, string parent,
 			LiftMultiText description, LiftMultiText label, LiftMultiText abbrev,
-			Dictionary<string, ICmPossibility> dict, List<ICmPossibility> rgNew, ICmPossibilityList list)
+			Dictionary<string, ICmPossibility> dict, List<ICmPossibility> rgNew, ICmPossibilityList list, bool isCustom = false)
 		{
 			ICmPossibility poss = FindExistingPossibility(id, guidAttr, label, abbrev, dict, list);
 			if (poss == null)
@@ -1852,10 +1859,46 @@ namespace SIL.FieldWorks.LexText.Controls
 					possParent = dict[parent];
 				else
 					possParent = list;
-				poss = CreateNewCmPossibility(guidAttr, possParent);
+				poss = isCustom ? CreateNewCustomPossibility(guidAttr, possParent) : CreateNewCmPossibility(guidAttr, possParent);
 				SetNewPossibilityAttributes(id, description, label, abbrev, poss);
 				dict[id] = poss;
 				rgNew.Add(poss);
+			}
+		}
+
+		/// <summary>
+		/// To Process Publications
+		/// </summary>
+		/// <param name="id"></param>
+		/// <param name="guidAttr"></param>
+		/// <param name="parent"></param>
+		/// <param name="description">safe-XML</param>
+		/// <param name="label">safe-XML</param>
+		/// <param name="abbrev">safe-XML</param>
+		/// <param name="dict"></param>
+		/// <param name="rgNew"></param>
+		/// <param name="list"></param>
+		/// <param name="isCustom"></param>
+		private void ProcessPossibilityPublications(string id, string guidAttr, string parent,
+			LiftMultiText description, LiftMultiText label, LiftMultiText abbrev,
+			Dictionary<string, ICmPossibility> dict, List<ICmPossibility> rgNew, ICmPossibilityList list, bool isCustom = false)
+		{
+			ICmPossibility poss = FindExistingPossibility(id, guidAttr, label, abbrev, dict, list);
+			if (poss == null)
+			{
+				ICmObject possParent = null;
+				if (!String.IsNullOrEmpty(parent) && dict.ContainsKey(parent))
+					possParent = dict[parent];
+				else
+					possParent = list;
+				poss = isCustom ? CreateNewCustomPossibility(guidAttr, possParent) : CreateNewCmPossibility(guidAttr, possParent);
+				SetNewPossibilityAttributes(id, description, label, abbrev, poss);
+				dict[id] = poss;
+				rgNew.Add(poss);
+			}
+			else
+			{
+				SetNewPossibilityAttributes(id, description, label, abbrev, poss);
 			}
 		}
 
@@ -1960,7 +2003,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			if (label.Count > 0)
 				MergeInMultiUnicode(poss.Name, CmPossibilityTags.kflidName, label, poss.Guid);
 			else
-				poss.Name.AnalysisDefaultWritingSystem = m_cache.TsStrFactory.MakeString(id, m_cache.DefaultAnalWs);
+				poss.Name.AnalysisDefaultWritingSystem = TsStringUtils.MakeString(id, m_cache.DefaultAnalWs);
 			MergeInMultiUnicode(poss.Abbreviation, CmPossibilityTags.kflidAbbreviation, abbrev, poss.Guid);
 			MergeInMultiString(poss.Description, CmPossibilityTags.kflidDescription, description, poss.Guid);
 		}
@@ -2143,7 +2186,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="label">safe-XML</param>
 		/// <param name="abbrev">safe-XML</param>
 		/// <returns></returns>
-		ICmPossibility FindMatchingPossibility(IFdoOwningSequence<ICmPossibility> possibilities,
+		ICmPossibility FindMatchingPossibility(ILcmOwningSequence<ICmPossibility> possibilities,
 			LiftMultiText label, LiftMultiText abbrev)
 		{
 			IgnoreNewWs();
@@ -2174,7 +2217,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				foreach (string key in text.Keys)
 				{
 					int wsHvo = GetWsFromLiftLang(key);
-					string sValue = Icu.Normalize(XmlUtils.DecodeXml(text[key].Text), Icu.UNormalizationMode.UNORM_NFD);
+					string sValue = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD)
+						.Normalize(XmlUtils.DecodeXml(text[key].Text));
 					ITsString tssAlt = tsm.get_String(wsHvo);
 					if (String.IsNullOrEmpty(sValue) || (tssAlt == null || tssAlt.Length == 0))
 						continue;
@@ -2337,7 +2381,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		}
 
 		private IMoInflClass FindMatchingInflectionClass(string parent,
-			IFdoOwningCollection<IMoInflClass> collection, Dictionary<string, IMoInflClass> dict)
+			ILcmOwningCollection<IMoInflClass> collection, Dictionary<string, IMoInflClass> dict)
 		{
 			foreach (IMoInflClass infl in collection)
 			{
@@ -2354,7 +2398,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		}
 
 		private ICmPossibility FindMatchingPossibility(string sVal,
-			IFdoOwningSequence<ICmPossibility> possibilities,
+			ILcmOwningSequence<ICmPossibility> possibilities,
 			Dictionary<string, ICmPossibility> dict)
 		{
 			foreach (ICmPossibility poss in possibilities)
@@ -2496,7 +2540,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			// The key is the relationType string(eg. Synonym), The value is a list of groups of references.
 			//		in detail, the value holds a pair(tuple) containing a set of the ids(hvos) involved in the group
 			//		and a set of all the PendingRelation objects which have those ids.
-			var relationMap = new Dictionary<string, List<Tuple<Set<int>, Set<PendingRelation>>>>();
+			var relationMap = new Dictionary<string, List<Tuple<HashSet<int>, HashSet<PendingRelation>>>>();
 			if (m_mapFeatStrucTypeMissingFeatureAbbrs.Count > 0)
 				ProcessMissingFeatStrucTypeFeatures();
 			if (m_rgPendingRelation.Count > 0)
@@ -2641,7 +2685,8 @@ namespace SIL.FieldWorks.LexText.Controls
 			}
 		}
 
-		private void ProcessRelation(List<ILexReference> originalLexRefs, List<PendingRelation> rgRelation, Dictionary<string, List<Tuple<Set<int>, Set<PendingRelation>>>> uniqueRelations)
+		private void ProcessRelation(List<ILexReference> originalLexRefs, List<PendingRelation> rgRelation,
+			Dictionary<string, List<Tuple<HashSet<int>, HashSet<PendingRelation>>>> uniqueRelations)
 		{
 			if (rgRelation == null || rgRelation.Count == 0 || rgRelation[0] == null)
 				return;
@@ -2929,18 +2974,18 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="complexEntryTypes"></param>
 		/// <param name="referenceCollection"></param>
 		/// <param name="lexEntryRef"></param>
-		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, IFdoReferenceSequence<T> referenceCollection, ILexEntryRef lexEntryRef) where T : class, ICmObject
+		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, ILcmReferenceSequence<T> referenceCollection, ILexEntryRef lexEntryRef) where T : class, ICmObject
 		{
 			AdjustCollectionContents(complexEntryTypes, referenceCollection,
 									 lexEntryRef.VariantEntryTypesRS.Count == 0 ? LexTextControls.ksComplexFormType : LexTextControls.ksVariantType, lexEntryRef.Owner);
 		}
-		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, IFdoReferenceSequence<T> referenceCollection, ILexReference lexEntryRef) where T : class, ICmObject
+		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, ILcmReferenceSequence<T> referenceCollection, ILexReference lexEntryRef) where T : class, ICmObject
 		{
 			AdjustCollectionContents(complexEntryTypes, referenceCollection,
 									 lexEntryRef.TypeAbbreviation(m_cache.DefaultVernWs, lexEntryRef), referenceCollection.First());
 		}
 
-		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, IFdoReferenceSequence<T> referenceCollection, string typeName, ICmObject owner) where T : class, ICmObject
+		private void AdjustCollectionContents<T>(List<T> complexEntryTypes, ILcmReferenceSequence<T> referenceCollection, string typeName, ICmObject owner) where T : class, ICmObject
 		{
 			if (referenceCollection.Count != complexEntryTypes.Count)
 			{
@@ -2954,7 +2999,7 @@ namespace SIL.FieldWorks.LexText.Controls
 										TypeName = typeName,
 										BadValue = newItem is ILexEntry
 													? ((ILexEntry) newItem).HeadWordForWs(m_cache.DefaultVernWs).Text
-													: ((ILexEntry) (((ILexSense) newItem).Owner)).HeadWordForWs(m_cache.DefaultVernWs).Text
+													: ((ILexSense) newItem).OwnerOfClass<ILexEntry>().HeadWordForWs(m_cache.DefaultVernWs).Text
 									};
 						m_combinedCollections.Add(col);
 					}
@@ -3077,7 +3122,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		}
 
 		private void StoreLexReference(ICollection<ILexReference> refsAsYetUnmatched, List<PendingRelation> rgRelation,
-									   Dictionary<string, List<Tuple<Set<int>, Set<PendingRelation>>>> uniqueRelations)
+			Dictionary<string, List<Tuple<HashSet<int>, HashSet<PendingRelation>>>> uniqueRelations)
 		{
 			// Store any relations with unrecognized targets in residue, removing them from the
 			// list.
@@ -3127,6 +3172,9 @@ namespace SIL.FieldWorks.LexText.Controls
 				case (int)LexRefTypeTags.MappingTypes.kmtEntryOrSenseTree:
 				case (int)LexRefTypeTags.MappingTypes.kmtEntryTree:
 				case (int)LexRefTypeTags.MappingTypes.kmtSenseTree:
+				case (int)LexRefTypeTags.MappingTypes.kmtEntryOrSenseUnidirectional:
+				case (int)LexRefTypeTags.MappingTypes.kmtEntryUnidirectional:
+				case (int)LexRefTypeTags.MappingTypes.kmtSenseUnidirectional:
 					StoreTreeRelation(refsAsYetUnmatched, lrt, rgRelation);
 					break;
 			}
@@ -3294,8 +3342,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="rgRelation"></param>
 		/// <param name="uniqueRelations">see comment on </param>
 		private static void CollapseCollectionRelationPairs(IEnumerable<PendingRelation> rgRelation,
-																			 IDictionary<string, List<Tuple<Set<int>, Set<PendingRelation>>>>
-																				 uniqueRelations)
+			IDictionary<string, List<Tuple<HashSet<int>, HashSet<PendingRelation>>>> uniqueRelations)
 		{
 			//for every pending relation in this list
 			foreach(var rel in rgRelation)
@@ -3303,7 +3350,7 @@ namespace SIL.FieldWorks.LexText.Controls
 				Debug.Assert(rel.Target != null);
 				if(rel.Target == null)
 					continue;
-				List<Tuple<Set<int>, Set<PendingRelation>>> relationsForType;
+				List<Tuple<HashSet<int>, HashSet<PendingRelation>>> relationsForType;
 				uniqueRelations.TryGetValue(rel.RelationType, out relationsForType);
 				if(relationsForType != null)
 				{
@@ -3337,28 +3384,26 @@ namespace SIL.FieldWorks.LexText.Controls
 					//if this is a brand new relation for this type, build it
 					if(!foundGroup)
 					{
-						relationsForType.Add(new Tuple<Set<int>, Set<PendingRelation>>(new Set<int> { rel.ObjectHvo, rel.TargetHvo },
-													new Set<PendingRelation> { rel }));
+						relationsForType.Add(new Tuple<HashSet<int>, HashSet<PendingRelation>>(
+							new HashSet<int> {rel.ObjectHvo, rel.TargetHvo}, new HashSet<PendingRelation> {rel}));
 					}
 				}
 				else //First relation that we are processing, create the dictionary with this relation as our initial data.
 				{
-					var relData = new List<Tuple<Set<int>, Set<PendingRelation>>>
-						{
-							new Tuple<Set<int>, Set<PendingRelation>>(new Set<int> {rel.TargetHvo, rel.ObjectHvo},
-																					new Set<PendingRelation> {rel})
-						};
+					var relData = new List<Tuple<HashSet<int>, HashSet<PendingRelation>>>
+					{
+						new Tuple<HashSet<int>, HashSet<PendingRelation>>(new HashSet<int> {rel.TargetHvo, rel.ObjectHvo},
+							new HashSet<PendingRelation> {rel})
+					};
 					uniqueRelations[rel.RelationType] = relData;
 				}
 			}
 		}
 
 		private void StorePendingCollectionRelations(ICollection<ILexReference> originalLexRefs, IProgress progress,
-																	Dictionary<string, List<Tuple<Set<int>, Set<PendingRelation>>>>
-																		relationMap)
+			Dictionary<string, List<Tuple<HashSet<int>, HashSet<PendingRelation>>>> relationMap)
 		{
-			progress.Message = String.Format(LexTextControls.ksSettingCollectionRelationLinks,
-														m_rgPendingCollectionRelations.Count);
+			progress.Message = string.Format(LexTextControls.ksSettingCollectionRelationLinks, m_rgPendingCollectionRelations.Count);
 			progress.Minimum = 0;
 			progress.Maximum = relationMap.Count;
 			progress.Position = 0;
@@ -3370,7 +3415,7 @@ namespace SIL.FieldWorks.LexText.Controls
 					var incomingRelationIDs = collection.Item1;
 					var incomingRelations = collection.Item2;
 					ILexRefType lrt = FindLexRefType(sType, false);
-					if(IsAnExistingCollectionAnExactMatch(originalLexRefs, lrt, incomingRelationIDs))
+					if (IsAnExistingCollectionAnExactMatch(originalLexRefs, lrt, incomingRelationIDs))
 					{
 						continue;
 					}
@@ -3403,7 +3448,8 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="lrt">The LexRefType to inspect for duplicate collections</param>
 		/// <param name="checkTargets">The set of ids to look for</param>
 		/// <returns></returns>
-		private static bool IsAnExistingCollectionAnExactMatch(ICollection<ILexReference> originalLexRefs, ILexRefType lrt, Set<int> checkTargets)
+		private static bool IsAnExistingCollectionAnExactMatch(ICollection<ILexReference> originalLexRefs, ILexRefType lrt,
+			HashSet<int> checkTargets)
 		{
 			foreach (var lr in lrt.MembersOC)
 			{
@@ -3807,7 +3853,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// This pretends to replace CmObject.DeleteObjects() in the old system.
 		/// </summary>
 		/// <param name="deletedObjects"></param>
-		private void DeleteObjects(Set<int> deletedObjects)
+		private void DeleteObjects(HashSet<int> deletedObjects)
 		{
 			foreach (int hvo in deletedObjects)
 			{
@@ -3831,7 +3877,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// </summary>
 		private void DeleteOrphans()
 		{
-			Set<int> orphans = new Set<int>();
+			var orphans = new HashSet<int>();
 			// Look for LexReference objects that have lost all their targets.
 			ILexReferenceRepository repoLR = m_cache.ServiceLocator.GetInstance<ILexReferenceRepository>();
 			foreach (ILexReference lr in repoLR.AllInstances())
@@ -4190,7 +4236,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		{
 			if (m_factCmPossibility == null)
 				m_factCmPossibility = m_cache.ServiceLocator.GetInstance<ICmPossibilityFactory>();
-			if (!String.IsNullOrEmpty(guidAttr))
+			if (!string.IsNullOrEmpty(guidAttr))
 			{
 				Guid guid = (Guid)m_gconv.ConvertFrom(guidAttr);
 				if (owner is ICmPossibility)
@@ -4203,6 +4249,29 @@ namespace SIL.FieldWorks.LexText.Controls
 				ICmPossibility csd = m_factCmPossibility.Create();
 				if (owner is ICmPossibility)
 					(owner as ICmPossibility).SubPossibilitiesOS.Add(csd);
+				else
+					(owner as ICmPossibilityList).PossibilitiesOS.Add(csd);
+				return csd;
+			}
+		}
+
+		private ICmPossibility CreateNewCustomPossibility(string guidAttr, ICmObject owner)
+		{
+			var customPossibilityFactory = m_cache.ServiceLocator.GetInstance<ICmCustomItemFactory>();
+			if (!string.IsNullOrEmpty(guidAttr))
+			{
+				Guid guid = (Guid)m_gconv.ConvertFrom(guidAttr);
+				if (owner is ICmPossibility)
+					return customPossibilityFactory.Create(guid, owner as ICmCustomItem);
+				else
+					return customPossibilityFactory.Create(guid, owner as ICmPossibilityList);
+			}
+			else
+			{
+				var csd = customPossibilityFactory.Create();
+				var item = owner as ICmCustomItem;
+				if (item != null)
+					item.SubPossibilitiesOS.Add(csd);
 				else
 					(owner as ICmPossibilityList).PossibilitiesOS.Add(csd);
 				return csd;
@@ -4488,10 +4557,10 @@ namespace SIL.FieldWorks.LexText.Controls
 			protected Guid m_guid;
 			protected int m_flid;
 			int m_ws;
-			protected FdoCache m_cache;
+			protected LcmCache m_cache;
 			private FlexLiftMerger m_merger;
 
-			internal PendingErrorReport(Guid guid, int flid, int ws, FdoCache cache, FlexLiftMerger merger)
+			internal PendingErrorReport(Guid guid, int flid, int ws, LcmCache cache, FlexLiftMerger merger)
 			{
 				m_guid = guid;
 				m_flid = flid;
@@ -4583,7 +4652,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			string m_sMsg;
 			string m_sValue;
 
-			public InvalidData(string sMsg, Guid guid, int flid, string val, int ws, FdoCache cache, FlexLiftMerger merger)
+			public InvalidData(string sMsg, Guid guid, int flid, string val, int ws, LcmCache cache, FlexLiftMerger merger)
 				: base(guid, flid, ws, cache, merger)
 			{
 				m_sMsg = sMsg;
@@ -4623,7 +4692,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		{
 			PendingLexEntryRef m_pendRef;
 
-			public InvalidRelation(PendingLexEntryRef pend, FdoCache cache, FlexLiftMerger merger)
+			public InvalidRelation(PendingLexEntryRef pend, LcmCache cache, FlexLiftMerger merger)
 				: base(pend.CmObject.Guid, 0, 0, cache, merger)
 			{
 				m_pendRef = pend;
@@ -4668,7 +4737,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		{
 
 			private ICmObject _cmObject;
-			public CombinedCollection(ICmObject owner, FdoCache cache, FlexLiftMerger merger)
+			public CombinedCollection(ICmObject owner, LcmCache cache, FlexLiftMerger merger)
 				: base(owner.Guid, 0, 0, cache, merger)
 			{
 				_cmObject = owner;

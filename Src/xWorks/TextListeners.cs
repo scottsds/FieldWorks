@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -7,11 +7,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using XCore;
-using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -20,7 +20,7 @@ namespace SIL.FieldWorks.XWorks
 	/// </summary>
 	/// <remarks>TODO: make an xcore property for controlling the current WritingSystemSet.</remarks>
 	[MediatorDispose]
-	public class WritingSystemListHandler : IxCoreColleague, IFWDisposable
+	public class WritingSystemListHandler : IxCoreColleague, IDisposable
 	{
 		protected Mediator m_mediator;
 		protected PropertyTable m_propertyTable;
@@ -143,7 +143,7 @@ namespace SIL.FieldWorks.XWorks
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
 			m_mediator.AddColleague(this);
-			FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+			LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 			//don't know just what good having this default is, but it's at least safer
 			m_propertyTable.SetProperty("WritingSystemHvo",
 				cache.ServiceLocator.WritingSystems.DefaultAnalysisWritingSystem.Handle.ToString(),
@@ -232,7 +232,7 @@ namespace SIL.FieldWorks.XWorks
 			CheckDisposed();
 
 			display.List.Clear();
-			FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+			LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 			string wsSet = parameter as string;
 			WritingSystemSet setToUse = m_currentSet;
 			if (wsSet != null)
@@ -293,13 +293,13 @@ namespace SIL.FieldWorks.XWorks
 	/// Dummy handler to disable displaying the combined styles combobox by default.
 	/// </summary>
 	[MediatorDispose]
-	public class CombinedStylesListHandler : IxCoreColleague, IFWDisposable
+	public class CombinedStylesListHandler : IxCoreColleague, IDisposable
 	{
 		public enum StylesSet { All, CharacterOnly };
 
 		protected Mediator m_mediator;
 
-		#region IFWDisposable Members
+		#region IDisposable Members
 
 		/// <summary>
 		/// Check to see if the object has been disposed.
@@ -331,10 +331,6 @@ namespace SIL.FieldWorks.XWorks
 			Dispose(false);
 		}
 #endif
-
-		#endregion
-
-		#region IDisposable Members
 
 		/// <summary>
 		/// Clean up everything that we've been using.

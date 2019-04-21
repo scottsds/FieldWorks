@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2014 SIL International
+// Copyright (c) 2007-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 //
@@ -9,18 +9,19 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Globalization;
+using System.Linq;
+using System.Text;
 using System.Xml;
-
-using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.FwCoreDlgControls;
 using SIL.FieldWorks.Resources;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Framework
@@ -29,16 +30,12 @@ namespace SIL.FieldWorks.Common.Framework
 	/// A class that supports having a collection of factory styles defined in an XML file.
 	/// A static method can be called to update the database styles if they are out of date
 	/// with respect to the file.
-	///
-	/// Note: This class was refactored from TeStylesXmlAccessor, which originally included
-	/// all its functionality. Some traces of TE names may remain. The TeStylesXmlAccessor unit
-	/// test tests much of the functionality of this class.
 	/// </summary>
 	public abstract class StylesXmlAccessor : SettingsXmlAccessorBase
 	{
 		#region Data members
 		/// <summary>The FDO cache (must not be null)</summary>
-		protected readonly FdoCache m_cache;
+		protected readonly LcmCache m_cache;
 		/// <summary>The progress dialog (may be null)</summary>
 		protected IProgress m_progressDlg;
 		/// <summary>The XmlNode from which to get the style info</summary>
@@ -48,7 +45,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// <summary>Array of styles that the user has modified</summary>
 		protected List<string> m_userModifiedStyles = new List<string>();
 		/// <summary>Collection of styles in the DB</summary>
-		protected IFdoOwningCollection<IStStyle> m_databaseStyles;
+		protected ILcmOwningCollection<IStStyle> m_databaseStyles;
 		Dictionary<IStStyle, IStStyle> m_replacedStyles = new Dictionary<IStStyle, IStStyle>();
 
 		/// <summary>Dictionary of style names to StStyle objects representing the initial
@@ -66,6 +63,13 @@ namespace SIL.FieldWorks.Common.Framework
 		/// Maps from style name to ReservedStyleInfo.
 		/// </summary>
 		protected Dictionary<string, ReservedStyleInfo> m_htReservedStyles = new Dictionary<string, ReservedStyleInfo>();
+
+		/// <summary>
+		/// This indicates if the style file being imported contains ALL styles, or if it should be considered a partial set.
+		/// If it is a partial set we don't want to delete the missing styles.
+		/// </summary>
+		private bool m_deleteMissingStyles;
+
 		#endregion
 
 		#region OverwriteOptions enum
@@ -107,7 +111,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// Constructor is protected so only derived classes can create an instance
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		protected StylesXmlAccessor(FdoCache cache)
+		protected StylesXmlAccessor(LcmCache cache)
 		{
 			if (cache == null) throw new ArgumentNullException("cache");
 
@@ -120,7 +124,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// <summary>
 		/// The collection that owns the styles; for example, Scripture.StylesOC.
 		/// </summary>
-		protected abstract IFdoOwningCollection<IStStyle> StyleCollection { get; }
+		protected abstract ILcmOwningCollection<IStStyle> StyleCollection { get; }
 
 		#endregion
 
@@ -132,7 +136,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// ------------------------------------------------------------------------------------
 		protected override string DtdRequiredVersion
 		{
-			get { return "B8521229-70FB-4DD9-A022-434714B8DE4B"; }
+			get { return "1610190E-D7A3-42D7-8B48-C0C49320435F"; }
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -191,7 +195,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// ------------------------------------------------------------------------------------
 		protected override void ProcessResources(IThreadedProgress dlg, XmlNode doc)
 		{
-			dlg.RunTask(CreateStyles, StyleCollection, doc);
+			dlg.RunTask(CreateStyles, StyleCollection, doc, true);
 		}
 		#endregion
 
@@ -218,9 +222,10 @@ namespace SIL.FieldWorks.Common.Framework
 		/// ------------------------------------------------------------------------------------
 		protected object CreateStyles(IProgress progressDlg, params object[] parameters)
 		{
-			Debug.Assert(parameters.Length == 2);
-			m_databaseStyles = (IFdoOwningCollection<IStStyle>)parameters[0];
+			Debug.Assert(parameters.Length == 3);
+			m_databaseStyles = (ILcmOwningCollection<IStStyle>)parameters[0];
 			m_sourceStyles = (XmlNode)parameters[1];
+			m_deleteMissingStyles = (bool)parameters[2];
 			m_progressDlg = progressDlg;
 
 			NonUndoableUnitOfWorkHelper.DoUsingNewOrCurrentUOW(m_cache.ActionHandlerAccessor, CreateStyles);
@@ -256,6 +261,13 @@ namespace SIL.FieldWorks.Common.Framework
 								if (!styleInfo.SetExplicitParaIntProp(tpt, iVar, iVal))
 									throw new InvalidEnumArgumentException("tpt", tpt, typeof(FwTextPropType));
 							},
+							(tpt, sVal) =>
+							{
+								if (tpt == (int)FwTextPropType.ktptWsStyle)
+									styleInfo.ProcessWsSpecificOverrides(sVal);
+								else
+									throw new InvalidEnumArgumentException("tpt", tpt, typeof(FwTextPropType));
+							},
 							OverwriteOptions.All);
 					}
 				});
@@ -266,8 +278,6 @@ namespace SIL.FieldWorks.Common.Framework
 		/// Create a set of Scripture styles based on the given XML node.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		protected void CreateStyles()
 		{
 			string label = XmlUtils.GetOptionalAttributeValue(m_sourceStyles, "label", "");
@@ -276,6 +286,9 @@ namespace SIL.FieldWorks.Common.Framework
 				string.Format(ResourceHelper.GetResourceString("kstidCreatingStylesStatusMsg"),
 				string.Empty);
 			m_progressDlg.Position = 0;
+
+			// Move all styles from Scripture into LangProject if the Scripture object exists
+			MoveStylesFromScriptureToLangProject();
 
 			// Populate hashtable with initial set of styles
 			// these are NOT from the *Styles.xml files or from TeStylesXmlAccessor.InitReservedStyles()
@@ -293,14 +306,15 @@ namespace SIL.FieldWorks.Common.Framework
 			// First pass to create styles and set general properties.
 			CreateAndUpdateStyles(tagList);
 
-			CreateAnyReservedStylesThatDontAlreadyHaveTheGoodFortuneOfExisting();
-
 			// Second pass to set up "based-on" and "next" styles
 			SetBasedOnAndNextProps(tagList);
 
 			// Third pass to delete (and possibly prepare to rename) any styles that used to be
 			// factory styles but aren't any longer
-			DeleteDeprecatedStylesAndDetermineReplacements();
+			if (m_deleteMissingStyles)
+			{
+				DeleteDeprecatedStylesAndDetermineReplacements();
+			}
 
 			// Final step is to walk through the DB and relace any retired styles
 			ReplaceFormerStyles();
@@ -309,40 +323,27 @@ namespace SIL.FieldWorks.Common.Framework
 			SetNewResourceVersion(GetVersion(m_sourceStyles));
 		}
 
-		/// ------------------------------------------------------------------------------------
 		/// <summary>
-		/// Only TE currently uses "reserved" styles. For Flex m_htReservedStyles is empty.
-		/// For TE m_htReservedStyles is set in TeStylesXmlAccessor.InitReservedStyles().
-		/// You have to like this "self documenting name".
+		/// Moves styles that were specific to Scripture into the language project. Projects will have just one style sheet
+		/// that will be used throughout the project, including imported scripture.
 		/// </summary>
-		/// ------------------------------------------------------------------------------------
-		private void CreateAnyReservedStylesThatDontAlreadyHaveTheGoodFortuneOfExisting()
+		protected void MoveStylesFromScriptureToLangProject()
 		{
-			foreach (KeyValuePair<string, ReservedStyleInfo> kvp in m_htReservedStyles)
+			IScripture scr = Cache.LangProject.TranslatedScriptureOA;
+			if (scr == null)
+				return;
+			foreach (IStStyle style in scr.StylesOC)
 			{
-				string styleName = kvp.Key;
-				ReservedStyleInfo info = kvp.Value;
-				if (!info.created)
+				if (m_databaseStyles.Any(st => st.Name == style.Name))
 				{
-					m_progressDlg.Message =
-						string.Format(ResourceHelper.GetResourceString("kstidCreatingStylesStatusMsg"),
-						styleName);
-
-					// Find the existing style if there is one; otherwise, create new style object
-					var style = FindOrCreateStyle(styleName, info.styleType, info.context,
-						info.structure, info.function, info.guid);
-
-					// Avoid nasty crashing problems and take some decently haphazard stab at
-					// getting the right "Normal" font face (all the other built-in default
-					// properties are already okay).
-					if (IsNormalStyle(styleName))
-					{
-						ITsPropsBldr propsBldr = TsPropsBldrClass.Create();
-						propsBldr.SetStrPropValue((int)FwTextPropType.ktptFontFamily,
-							AppDefaultFont);
-						style.Rules = propsBldr.GetTextProps();
-					}
+					// We found a style with the same name as one already in out language project. Just use the one we already have.
+					var flexStyle = m_databaseStyles.First(st => st.Name == style.Name);
+					DomainObjectServices.ReplaceReferencesWhereValid(style, flexStyle);
+					scr.StylesOC.Remove(style);
+					continue;
 				}
+				// Adding the style to our database will automatically remove the style from Scripture.
+				m_databaseStyles.Add(style);
 			}
 		}
 
@@ -384,8 +385,6 @@ namespace SIL.FieldWorks.Common.Framework
 		/// </summary>
 		/// <param name="tagList">List of XML nodes representing factory styles to create</param>
 		/// -------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void CreateAndUpdateStyles(XmlNodeList tagList)
 		{
 			InitReservedStyles();
@@ -433,7 +432,7 @@ namespace SIL.FieldWorks.Common.Framework
 					int ws = GetWs(usage.Attributes);
 					string usageInfo = usage.InnerText;
 					if (ws > 0 && !String.IsNullOrEmpty(usageInfo))
-						style.Usage.set_String(ws, style.Cache.TsStrFactory.MakeString(usageInfo, ws));
+						style.Usage.set_String(ws, TsStringUtils.MakeString(usageInfo, ws));
 				}
 
 				// If the user has modified the style manually, we don't want to overwrite it
@@ -443,7 +442,7 @@ namespace SIL.FieldWorks.Common.Framework
 				OverwriteOptions option = OverwriteOptions.All;
 
 				// Get props builder with default Text Properties
-				ITsPropsBldr propsBldr = TsPropsBldrClass.Create();
+				ITsPropsBldr propsBldr = TsStringUtils.MakePropsBldr();
 				if (style.IsModified)
 				{
 					m_userModifiedStyles.Add(style.Name);
@@ -464,8 +463,8 @@ namespace SIL.FieldWorks.Common.Framework
 				if (style.Type == StyleType.kstParagraph)
 					SetParagraphProperties(styleName, styleTag,
 					((tpt, nVar, nVal) => m_progressDlg.SynchronizeInvoke.Invoke(() => propsBldr.SetIntPropValues(tpt, nVar, nVal))),
+					((tpt, sVal) => m_progressDlg.SynchronizeInvoke.Invoke(() => propsBldr.SetStrPropValue(tpt, sVal))),
 					option);
-
 				style.Rules = propsBldr.GetTextProps();
 			}
 		}
@@ -493,8 +492,8 @@ namespace SIL.FieldWorks.Common.Framework
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
 		/// Find the existing style if there is one; otherwise, create new style object
-		/// These styles are defined in FlexStyles.xml or TeStyles.xml which have fixed guids
-		/// All guids of factory styles will change with release 7.3
+		/// These styles are defined in FlexStyles.xml which have fixed guids
+		/// All guids of factory styles changed with release 7.3
 		/// </summary>
 		/// <param name="styleName">Name of style</param>
 		/// <param name="styleType">Type of style (para or char)</param>
@@ -510,26 +509,24 @@ namespace SIL.FieldWorks.Common.Framework
 		{
 			IStStyle style;
 			bool fUsingExistingStyle = false;
-			if (m_htOrigStyles.ContainsKey(styleName))
+			// EnsureCompatibleFactoryStyle will rename an incompatible user style to prevent collisions,
+			// but it is our responsibility to update the GUID on a compatible user style.
+			if (m_htOrigStyles.TryGetValue(styleName, out style) && EnsureCompatibleFactoryStyle(style, styleType, context, structure, function))
 			{
-				// These factory styles are already in the project
-				style = m_htOrigStyles[styleName];
-				int hvo = style.Hvo;
-				if (style.Guid != factoryGuid)
-				{   // create a new style with the correct guid.
-					IStStyle oldStyle = style; // is there a copy constructor?
+				// A style with the same name already exists in the project.
+				// It may be a user style or a factory style, but it has compatible context, structure, and function.
+				if (style.Guid != factoryGuid) // This is a user style; give it the factory GUID and update all usages
+				{
+					// create a new style with the correct guid.
+					IStStyle oldStyle = style; // REVIEW LastufkaM 2012.05: is there a copy constructor?
 					style = m_cache.ServiceLocator.GetInstance<IStStyleFactory>().Create(m_cache, factoryGuid);
 
 					// Before we set any data on the new style we should give it an owner.
 					// Don't delete the old one yet, though, because we want to copy things from it (and references to it).
-					var owner = oldStyle.Owner;
-					var scriptureOwner = owner as IScripture;
-					if (scriptureOwner != null)
-						scriptureOwner.StylesOC.Add(style);
-					else
-						((ILangProject)owner).StylesOC.Add(style); // currently the only other option
+					var owningCollection = ((ILangProject) oldStyle.Owner).StylesOC;
+					owningCollection.Add(style);
 
-					style.IsBuiltIn = oldStyle.IsBuiltIn;
+					style.IsBuiltIn = true; // whether or not it was before, it is now.
 					style.IsModified = oldStyle.IsModified;
 					style.Name = oldStyle.Name;
 					style.Type = oldStyle.Type;
@@ -552,16 +549,9 @@ namespace SIL.FieldWorks.Common.Framework
 					// arrangements of NextStyle). If so, just let those references stay for now (and be cleared when the old style
 					// is deleted).
 					DomainObjectServices.ReplaceReferencesWhereValid(oldStyle, style);
-					if (scriptureOwner != null)
-						scriptureOwner.StylesOC.Remove(oldStyle);
-					else
-						((ILangProject)owner).StylesOC.Remove(oldStyle);
+					owningCollection.Remove(oldStyle);
 				}
-				// Make sure existing style has compatible context, structure, and function.
-				// If not, get a new StStyle object that we can define.
-				style = EnsureCompatibleFactoryStyle(style, styleType, context, structure,
-					function);
-				fUsingExistingStyle = true; // We found a version of this in the current database.
+				m_htUpdatedStyles[styleName] = style; // REVIEW (Hasso) 2017.04: any reason this is shoved in the middle here? Parallel or UOW reasons, perhaps?
 			}
 			else
 			{
@@ -571,12 +561,9 @@ namespace SIL.FieldWorks.Common.Framework
 				m_databaseStyles.Add(style);
 				if (style.Owner == null)
 					throw new ApplicationException("StStyle objects must be owned!");
-			}
 
-			m_htUpdatedStyles[styleName] = style;
+				m_htUpdatedStyles[styleName] = style; // REVIEW (Hasso) 2017.04: any reason this is shoved in the middle here? Parallel or UOW reasons, perhaps?
 
-			if (!fUsingExistingStyle)
-			{
 				// Set properties not passed in as parameters
 				style.IsBuiltIn = true;
 				style.IsModified = false; // not found in our database, so use everything from the XML
@@ -782,22 +769,22 @@ namespace SIL.FieldWorks.Common.Framework
 
 		/// -------------------------------------------------------------------------------------
 		/// <summary>
-		/// If existing style is NOT a factory style, we're about to "clobber" a user style. If
-		/// the context, structure, and function don't match (and maybe even if they do), this
-		/// could be pretty bad. Store info necessary to rename their style and change all the
-		/// uses of it.
+		/// Determine whether the given style is compatible with the given type, context, structure, and function.
+		/// If the style is a factory style, and the context, structure, and function can't be adjusted to match, report an invalid installation.
+		/// If the style is NOT a factory style, and the context, structure, and function don't all match, rename it to prevent collisions.
+		/// If the style is not a factory style, but it is compatible, it is the CLIENT's responsibility to make adjustments.
 		/// </summary>
 		/// <param name="style">Style to check.</param>
 		/// <param name="type">Style type we want</param>
 		/// <param name="context">The context we want</param>
 		/// <param name="structure">The structure we want</param>
 		/// <param name="function">The function we want</param>
-		/// <returns>Either the passed in style, or a new style if the passed in one cannot be
-		/// redefined as requested.</returns>
+		/// <returns>True if the style can be used as-is or redefined as requested; False otherwise</returns>
 		/// -------------------------------------------------------------------------------------
-		public IStStyle EnsureCompatibleFactoryStyle(IStStyle style, StyleType type,
+		public bool EnsureCompatibleFactoryStyle(IStStyle style, StyleType type,
 			ContextValues context, StructureValues structure, FunctionValues function)
 		{
+			// If this is a bult-in style, but the context or function has changed, update them.
 			if (style.IsBuiltIn &&
 				(style.Context != context ||
 				style.Function != function) &&
@@ -814,9 +801,10 @@ namespace SIL.FieldWorks.Common.Framework
 					style.Structure = structure;
 				if (style.Function != function)
 					style.Function = function;
-				return style;
+				return true;
 			}
 
+			// Handle an incompatible Style by renaming a conflicting User style or reporting an invalid installation for an incompatible built-in style.
 			if (style.Type != type ||
 				!CompatibleContext(style.Context, context) ||
 				style.Structure != structure ||
@@ -838,17 +826,15 @@ namespace SIL.FieldWorks.Common.Framework
 					m_styleReplacements[style.Name] = sNewName;
 					style.Name = sNewName;
 				}
-				//The guid for this new style is going to be different.
-				var newFactoryStyle = m_cache.ServiceLocator.GetInstance<IStStyleFactory>().Create();
-				// The new style is only added if its guid is different from every other known style.
-				m_databaseStyles.Add(newFactoryStyle);
-				return newFactoryStyle;
+				return false;
 			}
+
+			// Update context and function as needed
 			if (style.Context != context)
 				style.Context = context;
 			if (style.Function != function)
 				style.Function = function;
-			return style;
+			return true;
 		}
 
 		/// -------------------------------------------------------------------------------------
@@ -1163,23 +1149,54 @@ namespace SIL.FieldWorks.Common.Framework
 					int wsId = GetWs(child.Attributes);
 					if (wsId == 0)
 						continue; // WS not in use in this project?
-					string family = XmlUtils.GetOptionalAttributeValue(child, "family");
-					string sizeText = XmlUtils.GetOptionalAttributeValue(child, "size");
 					var fontInfo = new FontInfo();
+					var family = XmlUtils.GetOptionalAttributeValue(child, "family");
 					if (family != null)
 					{
 						fontInfo.m_fontName = new InheritableStyleProp<string>(family);
 					}
+					var sizeText = XmlUtils.GetOptionalAttributeValue(child, "size");
 					if (sizeText != null)
 					{
 						int nSize = InterpretMeasurementAttribute(sizeText, "override.size", styleName, ResourceFileName);
 						fontInfo.m_fontSize = new InheritableStyleProp<int>(nSize);
 					}
+					var color = XmlUtils.GetOptionalAttributeValue(child, "color");
+					if (color != null)
+					{
+						Color parsedColor;
+						if (color.StartsWith("("))
+						{
+							var colorVal = ColorVal(color, styleName);
+							parsedColor = Color.FromArgb(colorVal);
+						}
+						else
+						{
+							parsedColor = Color.FromName(color);
+						}
+						fontInfo.m_fontColor = new InheritableStyleProp<Color>(parsedColor);
+					}
+					var bold = XmlUtils.GetOptionalAttributeValue(child, "bold");
+					if (bold != null)
+					{
+						fontInfo.m_bold = new InheritableStyleProp<bool>(bool.Parse(bold));
+					}
+					var italic = XmlUtils.GetOptionalAttributeValue(child, "italic");
+					if (italic != null)
+					{
+						fontInfo.m_italic = new InheritableStyleProp<bool>(bool.Parse(italic));
+					}
 					overrides[wsId] = fontInfo;
 				}
 			}
 			if (overrides.Count > 0)
-				setStrProp((int)FwTextPropType.ktptWsStyle, StyleInfo.GetOverridesString(overrides));
+			{
+				var overridesString = BaseStyleInfo.GetOverridesString(overrides);
+				if (!string.IsNullOrEmpty(overridesString))
+				{
+					setStrProp((int)FwTextPropType.ktptWsStyle, overridesString);
+				}
+			}
 			// TODO: Handle dropcap attribute
 		}
 
@@ -1190,9 +1207,9 @@ namespace SIL.FieldWorks.Common.Framework
 		/// </summary>
 		/// <param name="val">Value to interpret (a color name or (red, green, blue).</param>
 		/// <param name="styleName">name of the style (for error reporting)</param>
-		/// <returns></returns>
+		/// <returns>the color as a BGR 6-digit hex int</returns>
 		/// ------------------------------------------------------------------------------------
-		int ColorVal(string val, string styleName)
+		private int ColorVal(string val, string styleName)
 		{
 			if (val[0] == '(')
 			{
@@ -1201,7 +1218,7 @@ namespace SIL.FieldWorks.Common.Framework
 				int secondComma = val.IndexOf(',', firstComma + 1);
 				int green = Convert.ToInt32(val.Substring(firstComma + 1, secondComma - firstComma - 1));
 				int blue = Convert.ToInt32(val.Substring(secondComma + 1, val.Length - secondComma - 2));
-				return red + (blue * 256 + green) * 256;
+				return(blue * 256 + green) * 256 + red;
 			}
 			Color col = Color.FromName(val);
 			if (col.ToArgb() == 0)
@@ -1209,7 +1226,7 @@ namespace SIL.FieldWorks.Common.Framework
 				ReportInvalidInstallation(String.Format(
 					FrameworkStrings.ksUnknownUnderlineColor, styleName, ResourceFileName));
 			}
-			return col.R + (col.B * 256 + col.G) * 256;
+			return (col.B * 256 + col.G) * 256 + col.R;
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -1220,7 +1237,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// <param name="strVal"></param>
 		/// <returns></returns>
 		/// ------------------------------------------------------------------------------------
-		static public int InterpretUnderlineType(string strVal)
+		public static int InterpretUnderlineType(string strVal)
 		{
 			int val = (int)FwUnderlineType.kuntSingle; // default
 			switch(strVal)
@@ -1263,10 +1280,11 @@ namespace SIL.FieldWorks.Common.Framework
 		/// </param>
 		/// <param name="styleTag">XML node that has the paragraph properties</param>
 		/// <param name="setIntProp">the delegate to set each int property</param>
+		/// <param name="setStrProp">the delegate to set each string property</param>
 		/// <param name="options">Indicates which properties to overwrite.</param>
 		/// ------------------------------------------------------------------------------------
 		private void SetParagraphProperties(string styleName, XmlNode styleTag,
-			Action<int, int, int> setIntProp, OverwriteOptions options)
+			Action<int, int, int> setIntProp, Action<int, string> setStrProp, OverwriteOptions options)
 		{
 			XmlNode node = styleTag.SelectSingleNode("paragraph");
 			if (node == null)
@@ -1274,6 +1292,8 @@ namespace SIL.FieldWorks.Common.Framework
 				ReportInvalidInstallation(String.Format(
 					FrameworkStrings.ksMissingParagraphNode, styleName, ResourceFileName));
 			}
+			XmlNode bulletFontInfoNode = node.SelectSingleNode("BulNumFontInfo");
+
 			XmlAttributeCollection paraAttributes = node.Attributes;
 
 			node = paraAttributes.GetNamedItem("keepWithNext");
@@ -1338,9 +1358,12 @@ namespace SIL.FieldWorks.Common.Framework
 			}
 
 			node = paraAttributes.GetNamedItem("background");
-			if (node != null && node.Value != "white")
-				ReportInvalidInstallation(String.Format(
-					FrameworkStrings.ksUnknownBackgroundValue, styleName, ResourceFileName));
+			var sColor = (node == null ? "default" : node.Value);
+			if (sColor != "default")
+			{
+				setIntProp((int)FwTextPropType.ktptBackColor, (int)FwTextPropVar.ktpvDefault,
+					ColorVal(sColor, styleName));
+			}
 
 			// set leading indentation
 			node = paraAttributes.GetNamedItem("indentLeft");
@@ -1418,26 +1441,6 @@ namespace SIL.FieldWorks.Common.Framework
 					(int)FwTextPropVar.ktpvMilliPoint, nSpaceAfter);
 			}
 
-			// Set lineSpacing
-			node = paraAttributes.GetNamedItem("lineSpacingType");
-			string sLineSpacingType = "";
-			if (node != null)
-			{
-				sLineSpacingType = node.Value;
-				switch (sLineSpacingType)
-				{
-						//verify valid line spacing types
-					case "atleast":
-						break;
-					case "exact":
-						break;
-					default:
-						ReportInvalidInstallation(String.Format(
-							FrameworkStrings.ksUnknownLineSpacingValue, styleName, ResourceFileName));
-						break;
-				}
-			}
-
 			node = paraAttributes.GetNamedItem("lineSpacing");
 			if (node != null)
 			{
@@ -1447,14 +1450,35 @@ namespace SIL.FieldWorks.Common.Framework
 					ReportInvalidInstallation(String.Format(
 						FrameworkStrings.ksNegativeLineSpacing, styleName, ResourceFileName));
 				}
-				if(sLineSpacingType == "exact")
-				{
-					lineSpacing *= -1; // negative lineSpacing indicates exact line spacing
-				}
 
-				setIntProp(
-					(int)FwTextPropType.ktptLineHeight,
-					(int)FwTextPropVar.ktpvMilliPoint, lineSpacing);
+				// Set lineSpacing
+				node = paraAttributes.GetNamedItem("lineSpacingType");
+				string sLineSpacingType = "";
+				if (node != null)
+				{
+					sLineSpacingType = node.Value;
+					switch (sLineSpacingType)
+					{
+						// verify valid line spacing types
+						case "atleast":
+							setIntProp((int)FwTextPropType.ktptLineHeight,
+								(int)FwTextPropVar.ktpvMilliPoint, lineSpacing);
+							break;
+						case "exact":
+							lineSpacing *= -1; // negative lineSpacing indicates exact line spacing
+							setIntProp((int)FwTextPropType.ktptLineHeight,
+								(int)FwTextPropVar.ktpvMilliPoint, lineSpacing);
+							break;
+						case "rel":
+							setIntProp((int) FwTextPropType.ktptLineHeight,
+								(int) FwTextPropVar.ktpvRelative, lineSpacing);
+							break;
+						default:
+							ReportInvalidInstallation(string.Format(
+								FrameworkStrings.ksUnknownLineSpacingValue, styleName, ResourceFileName));
+							break;
+					}
+				}
 			}
 
 			// Set borders
@@ -1505,6 +1529,143 @@ namespace SIL.FieldWorks.Common.Framework
 				setIntProp((int)FwTextPropType.ktptBulNumStartAt,
 					(int)FwTextPropVar.ktpvDefault, nVal);
 			}
+
+			node = paraAttributes.GetNamedItem("bulNumTxtAft");
+			if (node?.Value.Length > 0)
+			{
+				setStrProp((int) FwTextPropType.ktptBulNumTxtAft, node.Value);
+			}
+
+			node = paraAttributes.GetNamedItem("bulNumTxtBef");
+			if (node?.Value.Length > 0)
+			{
+				setStrProp((int) FwTextPropType.ktptBulNumTxtBef, node.Value);
+			}
+
+			node = paraAttributes.GetNamedItem("bulCusTxt");
+			if (node?.Value.Length > 0)
+			{
+				setStrProp((int) FwTextPropType.ktptCustomBullet, node.Value);
+			}
+
+			//Bullet Font Info
+			if (bulletFontInfoNode?.ChildNodes == null)
+				return;
+			SetBulNumFontInfoProperties(styleName, setStrProp, bulletFontInfoNode);
+		}
+
+		/// ------------------------------------------------------------------------------------
+		/// <summary>
+		/// Read the BulNumFontInfo properties from the XML node and set the properties in the given
+		/// props builder.
+		/// </summary>
+		/// <param name="styleName">Name of style being created/updated (for error reporting) </param>
+		/// <param name="setStrProp">the delegate to set each string property</param>
+		/// <param name="bulletFontInfoNode">BulNumFontInfo Node from Xml document</param>
+		/// ------------------------------------------------------------------------------------
+		private void SetBulNumFontInfoProperties(string styleName, Action<int, string> setStrProp, XmlNode bulletFontInfoNode)
+		{
+			ITsPropsBldr propsBldr = TsStringUtils.MakePropsBldr();
+			int type, var;
+
+			XmlAttributeCollection bulNumFontAttributes = bulletFontInfoNode.Attributes;
+			if (bulNumFontAttributes == null) return;
+
+			XmlNode attr = bulNumFontAttributes.GetNamedItem("italic");
+			if (attr != null)
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptItalic, (int) FwTextPropVar.ktpvEnum,
+					GetBoolAttribute(bulNumFontAttributes, "italic", styleName, ResourceFileName)
+						? (int) FwTextToggleVal.kttvForceOn
+						: (int) FwTextToggleVal.kttvOff);
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("bold");
+			if (attr != null)
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptBold, (int) FwTextPropVar.ktpvEnum,
+					GetBoolAttribute(bulNumFontAttributes, "bold", styleName, ResourceFileName)
+						? (int) FwTextToggleVal.kttvForceOn
+						: (int) FwTextToggleVal.kttvOff);
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("size");
+			if (attr != null)
+			{
+				int nSize = InterpretMeasurementAttribute(attr.Value, "size", styleName, ResourceFileName);
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptFontSize, (int) FwTextPropVar.ktpvMilliPoint, nSize);
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("color");
+			string sbColor = (attr == null ? "default" : attr.Value);
+			if (sbColor != "default")
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptForeColor, (int) FwTextPropVar.ktpvDefault,
+					ColorVal(sbColor, styleName));
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("underlineColor");
+			sbColor = (attr == null ? "default" : attr.Value);
+			if (sbColor != "default")
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptUnderColor, (int) FwTextPropVar.ktpvDefault,
+					ColorVal(sbColor, styleName));
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("underline");
+			string sUnderline = (attr == null) ? null : attr.Value;
+			if (sUnderline != null)
+			{
+				int unt = InterpretUnderlineType(sUnderline);
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptUnderline, (int) FwTextPropVar.ktpvEnum, unt);
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("family");
+			string sfamily = (attr == null) ? null : attr.Value;
+			if (sfamily != null)
+			{
+				propsBldr.SetStrPropValue((int) FwTextPropType.ktptFontFamily, sfamily);
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("forecolor");
+			sbColor = (attr == null ? "default" : attr.Value);
+			if (sbColor != "default")
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptForeColor, (int) FwTextPropVar.ktpvDefault,
+					ColorVal(sbColor, styleName));
+			}
+
+			attr = bulNumFontAttributes.GetNamedItem("backcolor");
+			sbColor = (attr == null ? "default" : attr.Value);
+			if (sbColor != "default")
+			{
+				propsBldr.SetIntPropValues((int) FwTextPropType.ktptBackColor, (int) FwTextPropVar.ktpvDefault,
+					ColorVal(sbColor, styleName));
+			}
+
+			// Add the integer properties to the bullet props string
+			StringBuilder bulletProps = new StringBuilder(propsBldr.IntPropCount * 3 + propsBldr.StrPropCount * 3);
+			for (int i = 0; i < propsBldr.IntPropCount; i++)
+			{
+				var intValue = propsBldr.GetIntProp(i, out type, out var);
+				bulletProps.Append((char) type);
+				bulletProps.Append((char) (intValue & 0xFFFF));
+				bulletProps.Append((char) ((intValue >> 16) & 0xFFFF));
+			}
+
+			// Add the string properties to the bullet props string
+			for (int i = 0; i < propsBldr.StrPropCount; i++)
+			{
+				var strValue = propsBldr.GetStrProp(i, out type);
+				bulletProps.Append((char) type);
+				bulletProps.Append(strValue);
+				bulletProps.Append('\u0000');
+			}
+
+			if (!string.IsNullOrEmpty(bulletProps.ToString()))
+			{
+				setStrProp((int) FwTextPropType.ktptBulNumFontInfo, bulletProps.ToString());
+			}
 		}
 
 		/// -------------------------------------------------------------------------------------
@@ -1551,56 +1712,59 @@ namespace SIL.FieldWorks.Common.Framework
 					string.Format(ResourceHelper.GetResourceString("kstidUpdatingStylesStatusMsg"),
 					styleName);
 
+				XmlAttributeCollection attributesWithBasedOn = styleTag.Attributes;
 				if (style.Type == StyleType.kstParagraph)
 				{
-					XmlAttributeCollection paraAttributes =
-						styleTag.SelectSingleNode("paragraph").Attributes;
+					attributesWithBasedOn = styleTag.SelectSingleNode("paragraph").Attributes;
+				}
+				else if (style.Type == StyleType.kstCharacter && attributesWithBasedOn.GetNamedItem("basedOn") == null)
+				{
+					continue;
+				}
 
+				if (styleName != StyleServices.NormalStyleName)
+				{
+					string sBasedOnStyleName = GetBasedOn(attributesWithBasedOn, styleName);
 
-					if (styleName != StyleServices.NormalStyleName)
-					{
-						string sBasedOnStyleName = GetBasedOn(paraAttributes, styleName);
+					if (String.IsNullOrEmpty(sBasedOnStyleName))
+						ReportInvalidInstallation(String.Format(
+							FrameworkStrings.ksMissingBasedOnStyle, styleName, ResourceFileName));
 
-						if (String.IsNullOrEmpty(sBasedOnStyleName))
-							ReportInvalidInstallation(String.Format(
-								FrameworkStrings.ksMissingBasedOnStyle, styleName, ResourceFileName));
+					if (!m_htUpdatedStyles.ContainsKey(sBasedOnStyleName))
+						ReportInvalidInstallation(String.Format(
+							FrameworkStrings.ksUnknownBasedOnStyle, styleName, sBasedOnStyleName));
 
-						if (!m_htUpdatedStyles.ContainsKey(sBasedOnStyleName))
-							ReportInvalidInstallation(String.Format(
-								FrameworkStrings.ksUnknownBasedOnStyle, styleName, sBasedOnStyleName));
+					var basedOnStyle = m_htUpdatedStyles[sBasedOnStyleName];
+					if (basedOnStyle.Hvo == style.Hvo)
+						ReportInvalidInstallation(String.Format(
+							FrameworkStrings.ksNoBasedOnSelf, styleName, ResourceFileName));
 
-						var basedOnStyle = m_htUpdatedStyles[sBasedOnStyleName];
-						if (basedOnStyle.Hvo == style.Hvo)
-							ReportInvalidInstallation(String.Format(
-								FrameworkStrings.ksNoBasedOnSelf, styleName, ResourceFileName));
+					style.BasedOnRA = basedOnStyle;
+				}
 
-						style.BasedOnRA = basedOnStyle;
-					}
+				string sNextStyleName = null;
+				if (m_htReservedStyles.ContainsKey(styleName))
+				{
+					ReservedStyleInfo info = m_htReservedStyles[styleName];
+					sNextStyleName = info.nextStyle;
+				}
+				else
+				{
+					XmlNode next = attributesWithBasedOn.GetNamedItem("next");
+					if (next != null)
+						sNextStyleName = next.Value.Replace("_", " ");
+				}
 
-					string sNextStyleName = null;
-					if (m_htReservedStyles.ContainsKey(styleName))
-					{
-						ReservedStyleInfo info = m_htReservedStyles[styleName];
-						sNextStyleName = info.nextStyle;
-					}
+				if (!string.IsNullOrEmpty(sNextStyleName))
+				{
+					if (!m_htUpdatedStyles.ContainsKey(sNextStyleName))
+						ReportInvalidInstallation(String.Format(
+							FrameworkStrings.ksUnknownNextStyle, styleName, sNextStyleName, ResourceFileName));
+
+					if (m_htUpdatedStyles.ContainsKey(sNextStyleName))
+						style.NextRA = m_htUpdatedStyles[sNextStyleName];
 					else
-					{
-						XmlNode next = paraAttributes.GetNamedItem("next");
-						if (next != null)
-							sNextStyleName = next.Value.Replace("_", " ");
-					}
-
-					if (!string.IsNullOrEmpty(sNextStyleName))
-					{
-						if (!m_htUpdatedStyles.ContainsKey(sNextStyleName))
-							ReportInvalidInstallation(String.Format(
-								FrameworkStrings.ksUnknownNextStyle, styleName, sNextStyleName, ResourceFileName));
-
-						if (m_htUpdatedStyles.ContainsKey(sNextStyleName))
-							style.NextRA = m_htUpdatedStyles[sNextStyleName];
-						else
-							style.NextRA = null;
-					}
+						style.NextRA = null;
 				}
 			}
 			SetBasedOnAndNextPropsReserved();
@@ -1729,16 +1893,22 @@ namespace SIL.FieldWorks.Common.Framework
 				case "LetterLower":	return (int)VwBulNum.kvbnLetterLower;
 				case "RomanUpper":	return (int)VwBulNum.kvbnRomanUpper;
 				case "RomanLower":	return (int)VwBulNum.kvbnRomanLower;
+				case "Custom":      return (int)VwBulNum.kvbnBullet;
 			}
+			int nVal;
 			if (sScheme.StartsWith("Bullet:"))
 			{
-				int nVal;
 				if (Int32.TryParse(sScheme.Substring(7), out nVal))
 				{
 					nVal += (int)VwBulNum.kvbnBulletBase;
 					if (nVal >= (int)VwBulNum.kvbnBulletBase && nVal <= (int)VwBulNum.kvbnBulletMax)
 						return nVal;
 				}
+			}
+			else if (Int32.TryParse(sScheme, out nVal))
+			{
+				if (nVal >= (int)VwBulNum.kvbnBulletBase && nVal <= (int)VwBulNum.kvbnBulletMax)
+					return nVal;
 			}
 			ReportInvalidInstallation(String.Format(FrameworkStrings.ksUnknownBulNumSchemeValue,
 				styleName, fileName));

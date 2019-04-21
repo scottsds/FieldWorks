@@ -1,16 +1,15 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// Authorship History: John Hatton
-// Last reviewed:
+
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using System.Windows.Forms;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.Utils;
 
 namespace XCore
 {
@@ -33,9 +32,7 @@ namespace XCore
 	/// adapts DotNetBar to provide context help
 	/// /summary>
 	[XCore.MediatorDispose]
-	[SuppressMessage("Gendarme.Rules.Correctness", "DisposableFieldsShouldBeDisposedRule",
-		Justification = "variable is a reference; it is owned by parent")]
-	public abstract class BaseContextHelper : IContextHelper, IxCoreColleague, IFWDisposable
+	public abstract class BaseContextHelper : IContextHelper, IxCoreColleague, IDisposable
 	{
 		protected PropertyTable m_propertyTable;
 		protected Mediator m_mediator;
@@ -180,7 +177,7 @@ namespace XCore
 
 			//we use the  directory of the file which held are parameters as the starting point
 			//of the path we were given.
-			string path = XmlUtils.GetManditoryAttributeValue(configurationParameters,
+			string path = XmlUtils.GetMandatoryAttributeValue(configurationParameters,
 				"contextHelpPath");
 			var configParamatersBasePath = FileUtils.StripFilePrefix(configurationParameters.BaseURI);
 			path = Path.Combine(Path.GetDirectoryName(configParamatersBasePath), path);

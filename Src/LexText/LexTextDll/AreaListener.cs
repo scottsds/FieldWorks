@@ -1,16 +1,15 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.Reporting;
-using SIL.Utils;
 using System.Xml;
+using SIL.Utils;
 using XCore;
 using ConfigurationException = SIL.Utils.ConfigurationException;
 
@@ -20,7 +19,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 	/// Summary description for AreaListener.
 	/// </summary>
 	[MediatorDispose]
-	public class AreaListener : IxCoreColleague, IFWDisposable
+	public class AreaListener : IxCoreColleague, IDisposable
 	{
 		#region Member variables
 
@@ -267,8 +266,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// <param name="display"></param>
 		/// <param name="areaId"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private bool FillList(UIListDisplayProperties display, string areaId)
 		{
 			// Don't bother refreshing this list.
@@ -310,8 +307,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// </summary>
 		/// <param name="display"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private bool FillListAreaList(UIListDisplayProperties display)
 		{
 			var customLists = GetListOfOwnerlessLists();
@@ -341,7 +336,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			UpdateWinConfig(fcustomChanged, customLists, windowConfiguration);
 
 			// Now update 'display'
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			var possRepo = cache.ServiceLocator.GetInstance<ICmPossibilityListRepository>();
 			if (display.List.Count > 0)
 			{
@@ -377,7 +372,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			var windowConfiguration = m_propertyTable.GetValue<XmlNode>("WindowConfiguration");
 			foreach (XmlNode tool in windowConfiguration.SelectSingleNode(GetListToolsXPath()).ChildNodes)
 			{
-				var toolName = XmlUtils.GetManditoryAttributeValue(tool, "value");
+				var toolName = XmlUtils.GetMandatoryAttributeValue(tool, "value");
 				var paramsNode = tool.SelectSingleNode(".//control/parameters[@clerk]");
 				if (paramsNode == null)
 					continue;
@@ -405,7 +400,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 
 		#region Custom List Methods
 
-		private static void AddToolNodeToDisplay(ICmPossibilityListRepository possRepo, FdoCache cache,
+		private static void AddToolNodeToDisplay(ICmPossibilityListRepository possRepo, LcmCache cache,
 												 UIListDisplayProperties display, XmlNode node)
 		{
 			// Modified how this works, so it uses the current UI version of the PossibilityList Name,
@@ -420,7 +415,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 		}
 
 		private static string FindMatchingPossibilityListUIName(XmlNode toolNode,
-																ICmPossibilityListRepository possRepo, FdoCache cache)
+																ICmPossibilityListRepository possRepo, LcmCache cache)
 		{
 			var recordListNode = GetClerkRecordListNodeFromToolNode(toolNode);
 			if (recordListNode == null)
@@ -441,7 +436,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			return possList == null ? null : possList.Name.UserDefaultWritingSystem.Text;
 		}
 
-		private static ICmPossibilityList GetListBySda(FdoCache cache,
+		private static ICmPossibilityList GetListBySda(LcmCache cache,
 													   string ownerAttr, string propertyAttr)
 		{
 			var mdc = cache.MetaDataCacheAccessor;
@@ -464,7 +459,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// <param name="cache"></param>
 		/// <param name="ownerAttr"></param>
 		/// <returns></returns>
-		private static int GetHvoFromXMLOwnerAttribut(FdoCache cache, string ownerAttr)
+		private static int GetHvoFromXMLOwnerAttribut(LcmCache cache, string ownerAttr)
 		{
 			var hvoResult = 0;
 			switch (ownerAttr)
@@ -509,8 +504,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// <summary>
 		/// Make up for weakness of XmlNode.SelectSingleNode.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private static XmlNode FindClerkNode(XmlNode toolNode, string clerkId)
 		{
 			foreach (XmlNode node in toolNode.SelectNodes(GetListClerksXPath() + "/clerk"))
@@ -544,8 +537,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 			m_ctotalLists++;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private void LoadAllCustomLists(List<ICmPossibilityList> customLists, XmlNode windowConfig)
 		{
 
@@ -575,7 +566,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 		private List<ICmPossibilityList> GetListOfOwnerlessLists()
 		{
 			// Get the cache and ICmPossibilityListRepository via the mediator
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			var repo = cache.ServiceLocator.GetInstance<ICmPossibilityListRepository>();
 
 			//// Find all custom lists (lists that own CmCustomItems)
@@ -640,8 +631,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 			//display.List.Add(label, value, sbsview, importedToolNode.SelectSingleNode("control"));
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="see REVIEW comment - code is possibly wrong")]
 		private void AddClerkToConfigForList(ICmPossibilityList curList, XmlNode windowConfig)
 		{
 			// Put the clerk node in the window configuration for this list
@@ -717,8 +706,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// <summary>
 		/// Make up for weakness of XmlNode.SelectSingleNode.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private XmlNode FindToolParamNode(XmlNode windowConfig, ICmPossibilityList curList)
 		{
 			string toolname = GetCustomListToolName(curList);
@@ -734,8 +721,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 			return null;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private XmlNode FindToolNode(XmlNode windowConfig, string areaName, string toolName)
 		{
 			foreach (XmlNode node in windowConfig.SelectNodes(GetToolXPath(areaName)))
@@ -1057,8 +1042,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 			return true;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private static bool IsToolInArea(string toolName, string area, XmlNode windowConfiguration)
 		{
 			XmlNodeList nodes = windowConfiguration.SelectNodes(GetToolXPath(area));

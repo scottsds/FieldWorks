@@ -1,37 +1,30 @@
-// Copyright (c) 2002-2013 SIL International
+// Copyright (c) 2002-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: FwApp.cs
-// Responsibility: TE Team
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Security;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FwCoreDlgs;
 using SIL.FieldWorks.Resources;
 using SIL.Reporting;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using SIL.Windows.Forms;
-
-
-#if DEBUG
-using SIL.CoreImpl; // Needed for DebugProcs in CoreImpl.
-#endif
 using XCore;
 
 namespace SIL.FieldWorks.Common.Framework
@@ -84,17 +77,15 @@ namespace SIL.FieldWorks.Common.Framework
 	/// </summary>
 	/// <remarks>Hungarian: rch</remarks>
 	/// ----------------------------------------------------------------------------------------
-	public interface IRecordChangeHandler : IFWDisposable
+	public interface IRecordChangeHandler : IDisposable
 	{
-		/// <summary>Initialize the object with the record and the list to which it belongs.
-		/// </summary>
-		void Setup(object /*"record"*/ o, IRecordListUpdater rlu);
-		/// <summary>Fix the record for any changes, possibly refreshing the list to which it
-		/// belongs.</summary>
+		/// <summary>Initialize the object with the record and the list to which it belongs.</summary>
+		void Setup(object record, IRecordListUpdater rlu, LcmCache cache);
+		/// <summary>Fix the record for any changes, possibly refreshing the list to which it belongs.</summary>
 		void Fixup(bool fRefreshList);
 
 		/// <summary>
-		/// True, if the updater was not null in the Setup call, otherwise false.
+		/// True if the updater was not null in the Setup call, otherwise false.
 		/// </summary>
 		bool HasRecordListUpdater
 		{
@@ -150,7 +141,7 @@ namespace SIL.FieldWorks.Common.Framework
 	/// Base application for .net FieldWorks apps (i.e., replacement for AfApp)
 	/// </remarks>
 	/// ---------------------------------------------------------------------------------------
-	public abstract class FwApp : IApp, ISettings, IFWDisposable, IHelpTopicProvider,
+	public abstract class FwApp : IApp, ISettings, IDisposable, IHelpTopicProvider,
 		IMessageFilter, IFeedbackInfoProvider, IProjectSpecificSettingsKeyProvider
 	{
 		#region SuppressedCacheInfo class
@@ -750,8 +741,6 @@ namespace SIL.FieldWorks.Common.Framework
 		/// Gets the project specific settings key.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "We're returning an object")]
 		public RegistryKey ProjectSpecificSettingsKey
 		{
 			get
@@ -836,7 +825,7 @@ namespace SIL.FieldWorks.Common.Framework
 		{
 			get
 			{
-				return Path.Combine(FwDirectoryFinder.FdoDirectories.ProjectsDirectory, "Sena 3", "Sena 3" + FdoFileHelper.ksFwDataXmlFileExtension);
+				return Path.Combine(FwDirectoryFinder.ProjectsDirectory, "Sena 3", "Sena 3" + LcmFileHelper.ksFwDataXmlFileExtension);
 			}
 		}
 
@@ -867,7 +856,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// Gets the cache.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			get { return (m_fwManager != null) ? m_fwManager.Cache : null; }
 		}

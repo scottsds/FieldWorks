@@ -4,19 +4,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
-
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Utils;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel.Core.Text;
 using SIL.Utils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.CoreImpl;
 
 namespace SIL.FieldWorks.Common.Framework
 {
@@ -57,7 +57,7 @@ namespace SIL.FieldWorks.Common.Framework
 		public Dictionary<string, Tuple<string, string>> NumberStyles = new Dictionary<string, Tuple<string, string>>();
 
 		private TextWriter m_writer;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private bool m_fRTL = false;
 		private int m_cColumns = 2;		// default for dictionary output.
 
@@ -66,7 +66,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// </summary>
 		/// <param name="w"></param>
 		/// <param name="cache"></param>
-		public XhtmlHelper(TextWriter w, FdoCache cache)
+		public XhtmlHelper(TextWriter w, LcmCache cache)
 		{
 			m_writer = w;
 			m_cache = cache;
@@ -655,11 +655,10 @@ namespace SIL.FieldWorks.Common.Framework
 					ch32 = ch1;
 					sChar = ch1.ToString();
 				}
-				if (ch32 != '_'  && ch32 != '-' && !Icu.IsAlphabetic(ch32) && !Icu.IsNumeric(ch32) && !Icu.IsDiacritic(ch32))
+				if (ch32 != '_'  && ch32 != '-' && !Icu.Character.IsAlphabetic(ch32) &&
+					!Icu.Character.IsNumeric(ch32) && !Icu.Character.IsDiacritic(ch32))
 				{
-					string sCharName;
-					Icu.UErrorCode error = Icu.UErrorCode.U_ZERO_ERROR;
-					Icu.u_CharName(ch32, Icu.UCharNameChoice.U_UNICODE_CHAR_NAME, out sCharName, out error);
+					var sCharName = Icu.Character.GetCharName(ch32);
 					sCharName = sCharName.Replace('-', '_');
 					sCharName = sCharName.Replace(' ', '_');
 					sCssClassName = sCssClassName.Replace(sChar, sCharName);

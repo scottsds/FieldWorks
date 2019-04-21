@@ -1,9 +1,7 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: LexTextApp.cs
-// Responsibility: RandyR
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,17 +10,19 @@ using System.Diagnostics;
 using System.ComponentModel;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainImpl;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.DomainImpl;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
 using XCore;
 using SIL.FieldWorks.IText;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.FieldWorks.LexText.Controls.DataNotebook;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.Scripture;
+using SIL.LCModel.DomainServices;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks.LexText
 {
@@ -221,6 +221,11 @@ namespace SIL.FieldWorks.XWorks.LexText
 			}
 		}
 
+		public override string WindowClassName
+		{
+			get { return "fieldworks-flex"; }
+		}
+
 		private static bool m_fResourceFailed = false;
 
 		/// -----------------------------------------------------------------------------------
@@ -306,8 +311,6 @@ namespace SIL.FieldWorks.XWorks.LexText
 		/// <summary>
 		/// Display the import commands only while in the appropriate area.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "mediator is a reference")]
 		public bool OnDisplayLaunchConnectedDialog(object parameters, ref UIItemDisplayProperties display)
 		{
 			display.Enabled = false;
@@ -338,15 +341,8 @@ namespace SIL.FieldWorks.XWorks.LexText
 				case "CmdImportInterlinearSfm":
 				case "CmdImportWordsAndGlossesSfm":
 				case "CmdImportInterlinearData":
-					if (wndActive.PropTable.GetStringProperty("currentContentControl", null) == "concordance" || wndActive.PropTable.GetStringProperty("currentContentControl", null) == "concordance")
-
-					{
-						fEnabled = false;
-					}
-					else
-					{
-						fEnabled = area == "textsWords";
-					}
+					// LT-11998: importing texts in the Concordance tool can crash
+					fEnabled = area == "textsWords" && wndActive.PropTable.GetStringProperty("currentContentControl", null) != "concordance";
 					break;
 				case "CmdImportSFMNotebook":
 					fEnabled = area == "notebook";
@@ -521,7 +517,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 		public bool OnRefresh(object sender)
 		{
 			CheckDisposed();
-			Set<string> setDatabases = new Set<string>();
+			var setDatabases = new HashSet<string>();
 			foreach (FwXWindow wnd in m_rgMainWindows)
 			{
 				string sDatabase = wnd.Cache.ProjectId.Name;
@@ -545,7 +541,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			using (var process = new Process())
 			{
 				process.StartInfo.UseShellExecute = true;
-				process.StartInfo.FileName = "http://wiki.lingtransoft.info/doku.php?id=tutorials:student_manual";
+				process.StartInfo.FileName = "https://lingtran.net/FLEx+8";
 				process.Start();
 				process.Close();
 			}
@@ -622,7 +618,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			CheckDisposed();
 
 			XCore.Command command = (XCore.Command)commandObject;
-			string fileName = SIL.Utils.XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "file");
+			string fileName = SIL.Utils.XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "file");
 			fileName = fileName.Replace('\\', Path.DirectorySeparatorChar);
 			string path = String.Format(FwDirectoryFinder.CodeDirectory +
 				"{0}Helps{0}Language Explorer{0}Training{0}" + fileName, Path.DirectorySeparatorChar);
@@ -645,7 +641,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			CheckDisposed();
 
 			XCore.Command command = (XCore.Command)commandObject;
-			string fileName = SIL.Utils.XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "file");
+			string fileName = SIL.Utils.XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "file");
 			fileName = fileName.Replace('\\', Path.DirectorySeparatorChar);
 			string path = String.Format(FwDirectoryFinder.CodeDirectory +
 				"{0}Helps{0}Language Explorer{0}Training{0}" + fileName, Path.DirectorySeparatorChar);
@@ -667,7 +663,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			CheckDisposed();
 
 			XCore.Command command = (XCore.Command)commandObject;
-			string fileName = SIL.Utils.XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "file");
+			string fileName = SIL.Utils.XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "file");
 			fileName = fileName.Replace('\\', Path.DirectorySeparatorChar);
 			string path = String.Format(FwDirectoryFinder.CodeDirectory + "{0}Helps{0}" + fileName,
 				Path.DirectorySeparatorChar);
@@ -808,8 +804,7 @@ namespace SIL.FieldWorks.XWorks.LexText
 			// as the suggestion for fixing LT-8797.
 			try
 			{
-				// Make sure this DB uses the current stylesheet version.
-				FlexStylesXmlAccessor.EnsureCurrentStylesheet(Cache.LangProject, progressDlg);
+				SafelyEnsureStyleSheetPostTERemoval(progressDlg);
 			}
 			catch (WorkerThreadException e)
 			{
@@ -819,6 +814,16 @@ namespace SIL.FieldWorks.XWorks.LexText
 			}
 
 			return true;
+		}
+
+		private void SafelyEnsureStyleSheetPostTERemoval(IThreadedProgress progressDlg)
+		{
+			// Ensure that we have up-to-date versification information so that projects with old TE styles
+			// will be able to migrate them from the Scripture area to the LanguageProject model
+			ScrReference.InitializeVersification(FwDirectoryFinder.EditorialChecksDirectory, false);
+			// Make sure this DB uses the current stylesheet version
+			// Suppress adjusting scripture sections since isn't safe to do so at this point
+			SectionAdjustmentSuppressionHelper.Do(() => FlexStylesXmlAccessor.EnsureCurrentStylesheet(Cache.LangProject, progressDlg));
 		}
 
 		/// <summary>

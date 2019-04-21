@@ -4,10 +4,9 @@
 
 using NUnit.Framework;
 using Rhino.Mocks;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.FDOTests;
+using SIL.LCModel;
 using XCore;
 
 namespace SIL.FieldWorks.IText

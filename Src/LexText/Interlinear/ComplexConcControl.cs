@@ -8,12 +8,13 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
 using System.Linq;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.FieldWorks.XWorks;
 using SIL.Utils;
@@ -620,8 +621,8 @@ namespace SIL.FieldWorks.IText
 			var cmd = (Command) args;
 			if (cmd.Parameters.Count > 0)
 			{
-				string minStr = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "min");
-				string maxStr = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "max");
+				string minStr = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "min");
+				string maxStr = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "max");
 				min = Int32.Parse(minStr);
 				max = Int32.Parse(maxStr);
 			}

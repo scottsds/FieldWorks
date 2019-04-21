@@ -27,7 +27,7 @@ endif
 
 PACKAGES := gtkmm-2.4
 
-INCLUDES := $(shell icu-config --detect-prefix --cppflags) \
+INCLUDES := $(shell icu-config --cppflags) \
 	 $(INCLUDES) \
 	-I$(GENERIC_SRC) -I$(TLB_SRC) -I$(INCLUDE) \
 	-I$(WIN32MORE_INC) \
@@ -41,7 +41,7 @@ LDLIBS = \
 	-L$(COM_LIB) -lcom \
 	-L$(WIN32BASE_LIB) -lWin32Base \
 	$(shell pkg-config --libs $(PACKAGES)) \
-	$(shell icu-config --detect-prefix --ldflags) \
+	$(shell icu-config --ldflags) \
 	-ldl
 
 LINK_LIBS := \
@@ -49,7 +49,7 @@ LINK_LIBS := \
 	$(DEBUG_LIBS) \
 
 CPPFLAGS = $(DEFINES) $(INCLUDES) -MMD
-CXXFLAGS = -g $(OPTIMIZATIONS) -fPIC -fvisibility=hidden -Werror -Waddress -Warray-bounds -Wmissing-field-initializers -Wclobbered -Wreturn-type -fstack-protector-all -Wshadow -rdynamic
+CXXFLAGS = -g $(OPTIMIZATIONS) -fPIC -fvisibility=hidden -Werror -Waddress -Warray-bounds -Wmissing-field-initializers -Wclobbered -Wreturn-type -fstack-protector-all -Wshadow -rdynamic -std=c++11
 
 ARFLAGS  = -crs
 

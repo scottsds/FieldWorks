@@ -4,12 +4,12 @@
 
 using System;
 using SIL.FieldWorks.Common.Controls;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.FDOTests;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Filters;
 using NUnit.Framework;
 using System.Xml;
+using SIL.LCModel.Core.Text;
 
 namespace XMLViewsTests
 {
@@ -163,7 +163,7 @@ namespace XMLViewsTests
 		public void StringsFor()
 		{
 			var entry = Cache.ServiceLocator.GetInstance<ILexEntryFactory>().Create();
-			entry.CitationForm.VernacularDefaultWritingSystem = Cache.TsStrFactory.MakeString("kick", Cache.DefaultVernWs);
+			entry.CitationForm.VernacularDefaultWritingSystem = TsStringUtils.MakeString("kick", Cache.DefaultVernWs);
 			var doc = new XmlDocument();
 			doc.LoadXml(@"<string class='LexEntry' field='CitationForm'/>");
 			var node = doc.DocumentElement;

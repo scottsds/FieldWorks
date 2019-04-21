@@ -1,15 +1,8 @@
-// Copyright (c) 2005-2013 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: XmlBrowseViewBaseVc.cs
-// Responsibility: Randy Regnier
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Collections.Generic;
@@ -18,15 +11,17 @@ using System.Diagnostics;
 using System.Windows.Forms;
 using System.Reflection; // for check-box icons.
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.Filters;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Resources; // for check-box icons.
 using SIL.FieldWorks.Common.RootSites;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Controls
@@ -176,7 +171,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// It will fail if asked to interpret decorator properties, since it doesn't have the decorator SDA.
 		/// Avoid using this constructor if possible.
 		/// </summary>
-		public XmlBrowseViewBaseVc(FdoCache cache)
+		public XmlBrowseViewBaseVc(LcmCache cache)
 			: base()
 		{
 			XmlBrowseViewBaseVcInit(cache, null);
@@ -184,7 +179,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary>
 		/// This contructor is used by FilterBar and LayoutCache to make a partly braindead VC.
 		/// </summary>
-		public XmlBrowseViewBaseVc(FdoCache cache, ISilDataAccess sda)
+		public XmlBrowseViewBaseVc(LcmCache cache, ISilDataAccess sda)
 			: base()
 		{
 			XmlBrowseViewBaseVcInit(cache, sda);
@@ -198,8 +193,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="fakeFlid">The fake flid.</param>
 		/// <param name="xbv">The XBV.</param>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		public XmlBrowseViewBaseVc(XmlNode xnSpec, int fakeFlid, XmlBrowseViewBase xbv)
 			: this(xbv)
 		{
@@ -286,6 +279,14 @@ namespace SIL.FieldWorks.Common.Controls
 						case 15:
 							savedCols = FixVersion16Columns(savedCols);
 							savedCols = savedCols.Replace("root version=\"15\"", "root version=\"16\"");
+							goto case 16;
+						case 16:
+							savedCols = FixVersion17Columns(savedCols);
+							savedCols = savedCols.Replace("root version=\"16\"", "root version=\"17\"");
+							goto case 17;
+						case 17:
+							savedCols = FixVersion18Columns(savedCols);
+							savedCols = savedCols.Replace("root version=\"17\"", "root version=\"18\"");
 							propertyTable.SetProperty(colListId, savedCols, true);
 							doc.LoadXml(savedCols);
 							break;
@@ -310,6 +311,47 @@ namespace SIL.FieldWorks.Common.Controls
 				doc = null;
 			}
 			return doc;
+		}
+
+		/// <summary>
+		/// Handles the changes we made to browse columns between 8.3 Alpha and 8.3 Beta 2
+		/// 8.3 (version 18, Nov 11, 2016).
+		/// </summary>
+		/// <param name="savedColsInput"></param>
+		/// <returns></returns>
+		internal static string FixVersion18Columns(string savedColsInput)
+		{
+			var savedCols = savedColsInput;
+			savedCols = ChangeAttrValue(savedCols, "ExtNoteType", "ghostListField", "LexDb.AllPossibleExtendedNotes", "LexDb.AllExtendedNoteTargets");
+			savedCols = ChangeAttrValue(savedCols, "ExtNoteType", "label", "Ext. Note Type", "Ext. Note - Type");
+			savedCols = RemoveAttr(savedCols, "ExtNoteType", "editable");
+			savedCols = RemoveAttr(savedCols, "ExtNoteType", "ws");
+			savedCols = RemoveAttr(savedCols, "ExtNoteType", "transduce");
+			savedCols = AppendAttrValue(savedCols, "ExtNoteType", "list", "LexDb.ExtendedNoteTypes");
+			savedCols = AppendAttrValue(savedCols, "ExtNoteType", "field", "LexExtendedNote.ExtendedNoteType");
+			savedCols = AppendAttrValue(savedCols, "ExtNoteType", "bulkEdit", "atomicFlatListItem");
+			savedCols = AppendAttrValue(savedCols, "ExtNoteType", "displayWs", "best vernoranal");
+			savedCols = AppendAttrValue(savedCols, "ExtNoteType", "displayNameProperty", "ShortNameTSS");
+			savedCols = ChangeAttrValue(savedCols, "ExtNoteDiscussion", "ghostListField", "LexDb.AllPossibleExtendedNotes", "LexDb.AllExtendedNoteTargets");
+			savedCols = ChangeAttrValue(savedCols, "ExtNoteDiscussion", "label", "Ext. Note Discussion", "Ext. Note - Discussion");
+			savedCols = ChangeAttrValue(savedCols, "ExtNoteDiscussion", "editable", "false", "true");
+			return savedCols;
+		}
+
+		/// <summary>
+		/// Handles the changes we made to browse columns (other than additions) between roughly 7.3 (March 12, 2013) and
+		/// 8.3 (version 17, June 15, 2016).
+		/// </summary>
+		/// <param name="savedColsInput"></param>
+		/// <returns></returns>
+		internal static string FixVersion17Columns(string savedColsInput)
+		{
+			var savedCols = savedColsInput;
+			savedCols = ChangeAttrValue(savedCols, "EtymologyGloss", "transduce", "LexEntry.Etymology.Gloss", "LexEtymology.Gloss");
+			savedCols = ChangeAttrValue(savedCols, "EtymologySource", "transduce", "LexEntry.Etymology.Source", "LexEtymology.Source");
+			savedCols = ChangeAttrValue(savedCols, "EtymologyForm", "transduce", "LexEntry.Etymology.Form", "LexEtymology.Form");
+			savedCols = ChangeAttrValue(savedCols, "EtymologyComment", "transduce", "LexEntry.Etymology.Comment", "LexEtymology.Comment");
+			return savedCols;
 		}
 
 		/// <summary>
@@ -392,6 +434,21 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 			return savedCols;
 		}
+
+		private static string RemoveAttr(string savedCols, string layoutName, string attrName)
+		{
+			var pattern = new Regex("<column [^>]*layout *= *\"" + layoutName + "\"[^>]*(" + attrName + "=\"[^\r\n\t\f ]*\" )");
+			var match = pattern.Match(savedCols);
+			if (match.Success)
+			{
+				int index = match.Groups[1].Index;
+				// It is better to use Groups(1).Length here rather than attrValue.Length, because there may be some RE pattern
+				// in attrValue (e.g., \\$) which would make a discrepancy.
+				savedCols = savedCols.Substring(0, index) + savedCols.Substring(index + match.Groups[1].Length);
+			}
+			return savedCols;
+		}
+
 		private static string AppendAttrValue(string savedCols, string layoutName, string attrName, string attrValue)
 		{
 			return AppendAttrValue(savedCols, layoutName, false, attrName, attrValue);
@@ -420,7 +477,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary>
 		/// This contructor is used by SortMethodFinder to make a braindead VC.
 		/// </summary>
-		private void XmlBrowseViewBaseVcInit(FdoCache cache, ISilDataAccess sda)
+		private void XmlBrowseViewBaseVcInit(LcmCache cache, ISilDataAccess sda)
 		{
 			Debug.Assert(cache != null);
 
@@ -504,7 +561,7 @@ namespace SIL.FieldWorks.Common.Controls
 					else
 					{
 						// we still need to know what listItemsClass to expect this list to be based on.
-						string listItemsClass = XmlUtils.GetManditoryAttributeValue(m_xnSpec, "listItemsClass");
+						string listItemsClass = XmlUtils.GetMandatoryAttributeValue(m_xnSpec, "listItemsClass");
 						m_listItemsClass = m_cache.MetaDataCacheAccessor.GetClassId(listItemsClass);
 
 					}
@@ -1694,9 +1751,9 @@ namespace SIL.FieldWorks.Common.Controls
 		public class ItemsCollectorEnv : CollectorEnv
 		{
 #pragma warning disable 414
-			FdoCache m_cache;
+			LcmCache m_cache;
 #pragma warning restore 414
-			Set<int> m_hvosInCell = new Set<int>();
+			private readonly HashSet<int> m_hvosInCell = new HashSet<int>();
 
 			/// <summary>
 			///
@@ -1704,7 +1761,7 @@ namespace SIL.FieldWorks.Common.Controls
 			/// <param name="env"></param>
 			/// <param name="cache"></param>
 			/// <param name="hvoRoot"></param>
-			public ItemsCollectorEnv(IVwEnv env, FdoCache cache, int hvoRoot)
+			public ItemsCollectorEnv(IVwEnv env, LcmCache cache, int hvoRoot)
 				: base(env, cache.MainCacheAccessor, hvoRoot)
 			{
 				m_cache = cache;
@@ -1717,7 +1774,7 @@ namespace SIL.FieldWorks.Common.Controls
 			/// <param name="cache"></param>
 			/// <param name="sda">Data access object, decorator, to use for this ItemsCollectorEnv</param>
 			/// <param name="hvoRoot"></param>
-			public ItemsCollectorEnv(IVwEnv env, FdoCache cache, ISilDataAccess sda, int hvoRoot)
+			public ItemsCollectorEnv(IVwEnv env, LcmCache cache, ISilDataAccess sda, int hvoRoot)
 				: base(env, sda, hvoRoot)
 			{
 				m_cache = cache;
@@ -1726,7 +1783,7 @@ namespace SIL.FieldWorks.Common.Controls
 			/// <summary>
 			/// Return the list of hvos used to build the display in DisplayCell.
 			/// </summary>
-			public Set<int> HvosCollectedInCell
+			public ISet<int> HvosCollectedInCell
 			{
 				get
 				{

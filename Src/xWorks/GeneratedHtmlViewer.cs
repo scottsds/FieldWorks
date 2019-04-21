@@ -1,17 +1,10 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: GeneratedHtmlViewer.cs
-// Responsibility: AndyBlack
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -22,13 +15,13 @@ using System.Windows.Forms;
 using System.Xml;
 using System.Xml.Xsl;
 using Microsoft.Win32;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Resources;
 using SIL.Utils;
 using XCore;
@@ -46,7 +39,7 @@ namespace SIL.FieldWorks.XWorks
 	/// <remarks>
 	/// IxCoreColleague is included in the IxCoreContentControl definition.
 	/// </remarks>
-	public class GeneratedHtmlViewer : UserControl, IxCoreContentControl, IFWDisposable
+	public class GeneratedHtmlViewer : UserControl, IxCoreContentControl
 	{
 		#region Data Members
 		/// <summary>
@@ -175,8 +168,6 @@ namespace SIL.FieldWorks.XWorks
 			get { return Path.Combine(UtilityHtmlPath, "InitialDocument.htm"); }
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "We're returning an object")]
 		private RegistryKey RegistryKey
 		{
 			get
@@ -194,11 +185,11 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// FDO cache.
 		/// </summary>
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get
 			{
-				return m_propertyTable.GetValue<FdoCache>("cache");
+				return m_propertyTable.GetValue<LcmCache>("cache");
 			}
 		}
 
@@ -227,10 +218,10 @@ namespace SIL.FieldWorks.XWorks
 
 		private void ReadParameters()
 		{
-			m_sRegKeyName = XmlUtils.GetManditoryAttributeValue(m_configurationParameters, "regKeyName");
-			m_sProgressDialogTitle = XmlUtils.GetManditoryAttributeValue(m_configurationParameters, "dialogTitle");
-			m_sFileNameKey = XmlUtils.GetManditoryAttributeValue(m_configurationParameters, "fileNameKey");
-			m_sStringsPath = XmlUtils.GetManditoryAttributeValue(m_configurationParameters, "stringsPath");
+			m_sRegKeyName = XmlUtils.GetMandatoryAttributeValue(m_configurationParameters, "regKeyName");
+			m_sProgressDialogTitle = XmlUtils.GetMandatoryAttributeValue(m_configurationParameters, "dialogTitle");
+			m_sFileNameKey = XmlUtils.GetMandatoryAttributeValue(m_configurationParameters, "fileNameKey");
+			m_sStringsPath = XmlUtils.GetMandatoryAttributeValue(m_configurationParameters, "stringsPath");
 
 			foreach (XmlNode rNode in m_configurationParameters.ChildNodes)
 			{
@@ -615,10 +606,10 @@ namespace SIL.FieldWorks.XWorks
 
 		private string ApplyTransform(string inputFile, XmlNode node, ProgressDialogWorkingOn dlg)
 		{
-			string progressPrompt = XmlUtils.GetManditoryAttributeValue(node, "progressPrompt");
+			string progressPrompt = XmlUtils.GetMandatoryAttributeValue(node, "progressPrompt");
 			UpdateProgress(progressPrompt, dlg);
-			string stylesheetName = XmlUtils.GetManditoryAttributeValue(node, "stylesheetName");
-			string stylesheetAssembly = XmlUtils.GetManditoryAttributeValue(node, "stylesheetAssembly");
+			string stylesheetName = XmlUtils.GetMandatoryAttributeValue(node, "stylesheetName");
+			string stylesheetAssembly = XmlUtils.GetMandatoryAttributeValue(node, "stylesheetAssembly");
 			string outputFile = Path.Combine(m_outputDirectory, Cache.ProjectId.Name + stylesheetName + "Result." + GetExtensionFromNode(node));
 
 			XsltArgumentList argumentList = CreateParameterList(node);
@@ -702,8 +693,8 @@ namespace SIL.FieldWorks.XWorks
 			{
 				if (rParamNode.Name == "param")
 				{
-					string name = XmlUtils.GetManditoryAttributeValue(rParamNode, "name");
-					string value = XmlUtils.GetManditoryAttributeValue(rParamNode, "value");
+					string name = XmlUtils.GetMandatoryAttributeValue(rParamNode, "name");
+					string value = XmlUtils.GetMandatoryAttributeValue(rParamNode, "value");
 					if (value == "TransformDirectory")
 					{
 						value = TransformPath.Replace("\\", "/");
@@ -721,7 +712,7 @@ namespace SIL.FieldWorks.XWorks
 
 		private static string GetExtensionFromNode(XmlNode node)
 		{
-			return XmlUtils.GetManditoryAttributeValue(node, "ext");
+			return XmlUtils.GetMandatoryAttributeValue(node, "ext");
 		}
 
 		private static void UpdateProgress(string sMessage, ProgressDialogWorkingOn dlg)

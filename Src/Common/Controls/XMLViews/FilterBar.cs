@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -7,21 +7,22 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Filters;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using XCore;
 
@@ -42,7 +43,7 @@ namespace SIL.FieldWorks.Common.Controls
 	/// evaluate filter for all items. This might be a method on RecordFilter.
 	/// </remarks>
 	/// ----------------------------------------------------------------------------------------
-	public class FilterSortItem : IFWDisposable
+	public class FilterSortItem : IDisposable
 	{
 		private XmlNode m_viewSpec;
 		private IStringFinder m_finder;
@@ -361,13 +362,13 @@ namespace SIL.FieldWorks.Common.Controls
 	/// <summary>
 	/// A FilterBar contains a sequence of combos or grey areas, one for each column of a browse view.
 	/// </summary>
-	public class FilterBar : UserControl, IFWDisposable
+	public class FilterBar : UserControl
 	{
 		BrowseViewer m_bv;
 		List<XmlNode> m_columns;
 		FilterSortItems m_items;
 		IFwMetaDataCache m_mdc; // m_cache.MetaDataCacheAccessor
-		FdoCache m_cache; // Use minimally, may want to factor out for non-db use.
+		LcmCache m_cache; // Use minimally, may want to factor out for non-db use.
 		ISilDataAccess m_sda; // m_cache.MainCacheAccessor
 		ILgWritingSystemFactory m_wsf;
 		int m_userWs;
@@ -916,20 +917,15 @@ namespace SIL.FieldWorks.Common.Controls
 
 		ITsString MakeLabel(string name)
 		{
-			return MakeLabel(name, m_cache.TsStrFactory, m_userWs);
+			return MakeLabel(name, m_userWs);
 		}
 
 		/// <summary>
 		/// Make the standard sort of label we put in combo items for the filter bar for the specified string.
 		/// </summary>
-		public static ITsString MakeLabel(string name, int userWs)
+		private static ITsString MakeLabel(string name, int userWs)
 		{
-			return MakeLabel(name, TsStrFactoryClass.Create(), userWs);
-		}
-
-		private static ITsString MakeLabel(string name, ITsStrFactory tsf, int userWs)
-		{
-			var bldr = tsf.MakeString(name, userWs).GetBldr();
+			ITsStrBldr bldr = TsStringUtils.MakeString(name, userWs).GetBldr();
 			// per FWR-1256, we want to use the default font for stuff in the UI writing system.
 			bldr.SetStrPropValue(0, bldr.Length, (int)FwTextPropType.ktptNamedStyle, StyleServices.UiElementStylename);
 			return bldr.GetString();
@@ -1074,8 +1070,6 @@ namespace SIL.FieldWorks.Common.Controls
 			Controls.Add(combo);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="dict is a reference; FilterComboItem disposed as part of Items collection")]
 		private void AddSpellingErrorsIfAppropriate(FilterSortItem item, FwComboBox combo, int ws)
 		{
 			// LT-9047 For certain fields, filtering on Spelling Errors just doesn't make sense.
@@ -1103,7 +1097,6 @@ namespace SIL.FieldWorks.Common.Controls
 
 		internal IVwPattern MatchExactPattern(String str)
 		{
-			ITsStrFactory tsf = m_cache.TsStrFactory;
 			int ws = m_cache.ServiceLocator.WritingSystems.DefaultAnalysisWritingSystem.Handle;
 			IVwPattern m_pattern = VwPatternClass.Create();
 			m_pattern.MatchOldWritingSystem = false;
@@ -1111,7 +1104,7 @@ namespace SIL.FieldWorks.Common.Controls
 			m_pattern.MatchWholeWord = false;
 			m_pattern.MatchCase = false;
 			m_pattern.UseRegularExpressions = false;
-			m_pattern.Pattern = tsf.MakeString(str, ws);
+			m_pattern.Pattern = TsStringUtils.MakeString(str, ws);
 			return m_pattern;
 		}
 
@@ -1124,8 +1117,7 @@ namespace SIL.FieldWorks.Common.Controls
 			m_pattern.MatchCase = false;
 			m_pattern.UseRegularExpressions = false;
 
-			ITsStrFactory tsf = m_cache.TsStrFactory;
-			m_pattern.Pattern = tsf.MakeString(str, ws);
+			m_pattern.Pattern = TsStringUtils.MakeString(str, ws);
 			m_pattern.IcuLocale = m_cache.WritingSystemFactory.GetStrFromWs(ws);
 			return m_pattern;
 		}
@@ -1368,7 +1360,7 @@ namespace SIL.FieldWorks.Common.Controls
 	/// Subclasses may launch a dialog and create the matcher appropriately first.
 	/// </summary>
 	/// ------------------------------------------------------------------------------------
-	public class FilterComboItem : ITssValue, IFWDisposable
+	public class FilterComboItem : ITssValue, IDisposable
 	{
 		/// <summary></summary>
 		protected IMatcher m_matcher;
@@ -1478,11 +1470,7 @@ namespace SIL.FieldWorks.Common.Controls
 			// Dispose unmanaged resources here, whether disposing is true or false.
 			m_matcher = null;
 			m_fsi = null; // Disposed elesewhere.
-			if (m_tssName != null)
-			{
-				Marshal.ReleaseComObject(m_tssName);
-				m_tssName = null;
-			}
+			m_tssName = null;
 
 			IsDisposed = true;
 		}
@@ -1505,7 +1493,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary>
 		///
 		/// </summary>
-		internal protected virtual void InvokeWithInstalledMatcher()
+		protected internal virtual void InvokeWithInstalledMatcher()
 		{
 			if (m_matcher != null)
 				m_matcher.Label = GetLabelForMatcher();
@@ -1637,12 +1625,12 @@ namespace SIL.FieldWorks.Common.Controls
 		private bool m_fIsUserVisible = false;
 		ListMatchOptions m_mode;
 		/// <summary></summary>
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		/// <summary>
 		/// May be derived from cache or set separately.
 		/// </summary>
 		protected ISilDataAccess m_sda;
-		Set<int> m_targets;
+		HashSet<int> m_targets;
 		int[] m_originalTargets;
 
 		/// ------------------------------------------------------------------------------------
@@ -1653,7 +1641,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="mode">The mode.</param>
 		/// <param name="targets">The targets.</param>
 		/// ------------------------------------------------------------------------------------
-		public ListChoiceFilter(FdoCache cache, ListMatchOptions mode, int[] targets)
+		public ListChoiceFilter(LcmCache cache, ListMatchOptions mode, int[] targets)
 		{
 			m_cache = cache;
 			m_mode = mode;
@@ -1672,7 +1660,7 @@ namespace SIL.FieldWorks.Common.Controls
 			set
 			{
 				m_originalTargets = value;
-				m_targets = new Set<int>(value);
+				m_targets = new HashSet<int>(value);
 			}
 		}
 		internal ListMatchOptions Mode
@@ -1692,7 +1680,7 @@ namespace SIL.FieldWorks.Common.Controls
 			int[] values = GetItems(item);
 			if (m_mode == ListMatchOptions.All || m_mode == ListMatchOptions.Exact)
 			{
-				Set<int> matches = new Set<int>(m_targets.Count);
+				var matches = new HashSet<int>();
 				foreach (int hvo in values)
 				{
 					if (m_targets.Contains(hvo))
@@ -1737,7 +1725,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// <value></value>
 		/// ------------------------------------------------------------------------------------
-		public override FdoCache Cache
+		public override LcmCache Cache
 		{
 			set
 			{
@@ -1889,7 +1877,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="mode"></param>
 		/// <param name="colSpec"></param>
 		/// <param name="targets"></param>
-		public ColumnSpecFilter(FdoCache cache, ListMatchOptions mode, int[] targets, XmlNode colSpec)
+		public ColumnSpecFilter(LcmCache cache, ListMatchOptions mode, int[] targets, XmlNode colSpec)
 			: base(cache, mode, targets)
 		{
 			m_colSpec = colSpec;
@@ -1991,7 +1979,7 @@ namespace SIL.FieldWorks.Common.Controls
 	internal abstract class FlidChoiceFilter : ListChoiceFilter
 	{
 		int m_flid;
-		public FlidChoiceFilter(FdoCache cache, ListMatchOptions mode, int flid, int[] targets)
+		public FlidChoiceFilter(LcmCache cache, ListMatchOptions mode, int flid, int[] targets)
 			: base(cache, mode, targets)
 		{
 			m_flid = flid;
@@ -2062,7 +2050,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// tree items to the ones that can actually be selected.
 		/// </summary>
 		int m_leafFlid;
-		FdoCache m_cache;
+		LcmCache m_cache;
 		XCore.Mediator m_mediator;
 		private PropertyTable m_propertyTable;
 		FwComboBox m_combo;
@@ -2106,7 +2094,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="fAtomic">if set to <c>true</c> [f atomic].</param>
 		/// <param name="filterType">Type of the filter.</param>
 		/// ------------------------------------------------------------------------------------
-		public ListChoiceComboItem(ITsString tssName, FilterSortItem fsi, FdoCache cache,
+		public ListChoiceComboItem(ITsString tssName, FilterSortItem fsi, LcmCache cache,
 			Mediator mediator, PropertyTable propertyTable, FwComboBox combo, bool fAtomic, Type filterType)
 			: base(tssName, null, fsi)
 		{
@@ -2209,13 +2197,13 @@ namespace SIL.FieldWorks.Common.Controls
 				if (m_filterType.IsSubclassOf(typeof(ColumnSpecFilter)))
 				{
 					ConstructorInfo ci = m_filterType.GetConstructor(
-						new Type[] { typeof(FdoCache), typeof(ListMatchOptions), typeof(int[]), typeof(XmlNode)});
+						new Type[] { typeof(LcmCache), typeof(ListMatchOptions), typeof(int[]), typeof(XmlNode)});
 					filter = (ListChoiceFilter)ci.Invoke(new object[] { m_cache, matchMode, chosenHvos, m_fsi.Spec});
 				}
 				else
 				{
 					ConstructorInfo ci = m_filterType.GetConstructor(
-						new Type[] { typeof(FdoCache), typeof(ListMatchOptions), typeof(int[]) });
+						new Type[] { typeof(LcmCache), typeof(ListMatchOptions), typeof(int[]) });
 					filter = (ListChoiceFilter)ci.Invoke(new object[] { m_cache, matchMode, chosenHvos });
 				}
 			}
@@ -2307,7 +2295,7 @@ namespace SIL.FieldWorks.Common.Controls
 				if (filter.Targets[0] == 0)
 				{
 					NullObjectLabel empty = new NullObjectLabel();
-					name = TsStringUtils.MakeTss(m_cache.TsStrFactory, m_cache.WritingSystemFactory.UserWs, empty.DisplayName);
+					name = TsStringUtils.MakeString(empty.DisplayName, m_cache.WritingSystemFactory.UserWs);
 				}
 				else
 				{
@@ -2346,7 +2334,7 @@ namespace SIL.FieldWorks.Common.Controls
 						label = XMLViewsStrings.ksAnyOf_;
 						break;
 				}
-				return m_cache.TsStrFactory.MakeString(label, m_cache.ServiceLocator.WritingSystemManager.UserWs);
+				return TsStringUtils.MakeString(label, m_cache.ServiceLocator.WritingSystemManager.UserWs);
 			}
 		}
 
@@ -2359,8 +2347,8 @@ namespace SIL.FieldWorks.Common.Controls
 		private ITsString ComposeLabel(ITsString name, string sFmt)
 		{
 			string sLabel = String.Format(sFmt, name.Text);
-			ITsString tsLabel = m_cache.TsStrFactory.MakeString(sLabel, m_cache.ServiceLocator.WritingSystemManager.UserWs);
-			int ich = sFmt.IndexOf("{0}");
+			ITsString tsLabel = TsStringUtils.MakeString(sLabel, m_cache.ServiceLocator.WritingSystemManager.UserWs);
+			int ich = sFmt.IndexOf("{0}", StringComparison.Ordinal);
 			if (ich >= 0)
 			{
 				int cchName = name.Text == null ? 0 : name.Text.Length;
@@ -2478,9 +2466,8 @@ namespace SIL.FieldWorks.Common.Controls
 
 				m_matcher = dlg.ResultingMatcher;
 				m_matcher.WritingSystemFactory = m_combo.WritingSystemFactory;
-				ITsStrFactory tsf = TsStrFactoryClass.Create();
 				m_combo.SelectedIndex = -1; // allows setting text to item not in list, see comment in FindComboItem.Invoke().
-				m_combo.Tss = tsf.MakeString(dlg.Pattern, m_ws);
+				m_combo.Tss = TsStringUtils.MakeString(dlg.Pattern, m_ws);
 				ITsString label = m_combo.Tss;
 				m_matcher.Label = label;
 				// We can't call base.Invoke BEFORE we set the label, because it will persist
@@ -2595,9 +2582,8 @@ namespace SIL.FieldWorks.Common.Controls
 
 				m_matcher = dlg.ResultingMatcher;
 				m_matcher.WritingSystemFactory = m_combo.WritingSystemFactory;
-				ITsStrFactory tsf = TsStrFactoryClass.Create();
 				m_combo.SelectedIndex = -1; // allows setting text to item not in list, see comment in FindComboItem.Invoke().
-				m_combo.Tss = tsf.MakeString(dlg.Pattern, m_ws);
+				m_combo.Tss = TsStringUtils.MakeString(dlg.Pattern, m_ws);
 				ITsString label = m_combo.Tss;
 				m_matcher.Label = label;
 				// We can't call base.Invoke BEFORE we set the label, because it will persist

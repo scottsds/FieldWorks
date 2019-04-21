@@ -1,29 +1,31 @@
-﻿// Copyright (c) 2014 SIL International
+﻿// Copyright (c) 2014-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
 using SIL.Xml;
 using XCore;
 using SIL.FieldWorks.Filters;
-using SIL.CoreImpl;
 using System.Collections;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.PlatformUtilities;
 
 namespace SIL.FieldWorks.Common.Controls
 {
 	/// <summary>
 	/// A browse view that displays the results of a search.
 	/// </summary>
-	public class MatchingObjectsBrowser : UserControl, IFWDisposable
+	public class MatchingObjectsBrowser : UserControl
 	{
 		#region Events
 
@@ -53,7 +55,7 @@ namespace SIL.FieldWorks.Common.Controls
 
 		private const int ListFlid = ObjectListPublisher.MinFakeFlid + 1111;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private IVwStylesheet m_stylesheet; // used to figure font heights.
 		private Mediator m_mediator;
 		private PropertyTable m_propertyTable;
@@ -160,7 +162,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="propertyTable"></param>
 		/// <param name="configNode">The config node.</param>
 		/// <param name="searchEngine">The search engine.</param>
-		public void Initialize(FdoCache cache, IVwStylesheet stylesheet, Mediator mediator, PropertyTable propertyTable, XmlNode configNode,
+		public void Initialize(LcmCache cache, IVwStylesheet stylesheet, Mediator mediator, PropertyTable propertyTable, XmlNode configNode,
 			SearchEngine searchEngine)
 		{
 			Initialize(cache, stylesheet, mediator, propertyTable, configNode, searchEngine, null);
@@ -176,7 +178,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="configNode">The config node.</param>
 		/// <param name="searchEngine">The search engine.</param>
 		/// <param name="reversalWs">The reversal writing system.</param>
-		public void Initialize(FdoCache cache, IVwStylesheet stylesheet, Mediator mediator, PropertyTable propertyTable, XmlNode configNode,
+		public void Initialize(LcmCache cache, IVwStylesheet stylesheet, Mediator mediator, PropertyTable propertyTable, XmlNode configNode,
 			SearchEngine searchEngine, CoreWritingSystemDefinition reversalWs)
 		{
 			CheckDisposed();
@@ -279,9 +281,7 @@ namespace SIL.FieldWorks.Common.Controls
 				ColumnsChanged(this, new EventArgs());
 		}
 
-#if __MonoCS__
 		private bool m_recursionProtection = false; // FWNX-262
-#endif
 
 		/// <summary>
 		/// Raises the <see cref="E:System.Windows.Forms.Control.Enter"/> event.
@@ -289,19 +289,19 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="e">An <see cref="T:System.EventArgs"/> that contains the event data.</param>
 		protected override void OnEnter(EventArgs e)
 		{
-#if __MonoCS__
-			if (m_recursionProtection) // FWNX-262
-				return;
-			m_recursionProtection = true;
-#endif
+			if (Platform.IsMono)
+			{
+				if (m_recursionProtection) // FWNX-262
+					return;
+
+				m_recursionProtection = true;
+			}
 
 			m_bvMatches.SelectedRowHighlighting = XmlBrowseViewBase.SelectionHighlighting.border;
 			base.OnEnter(e);
 			m_bvMatches.Select();
 
-#if __MonoCS__
 			m_recursionProtection = false;
-#endif
 		}
 
 		/// <summary>

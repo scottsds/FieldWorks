@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -10,17 +10,19 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using Icu;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.FieldWorks.Common.ScriptureUtils;
+using SIL.LCModel;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Resources;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel.Core.Text;
 using SIL.Utils;
 using SIL.Windows.Forms;
-using SILUBS.SharedScrUtils;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -63,9 +65,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		private string m_scrChecksDllFile;
 		private List<ContextInfo> m_currContextInfoList;
 		private Dictionary<string, List<ContextInfo>> m_contextInfoLists;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private IWritingSystemContainer m_wsContainer;
-		private ILgCharacterPropertyEngine m_charPropEng;
 		private IApp m_app;
 		private CoreWritingSystemDefinition m_ws;
 		private int m_gridRowHeight;
@@ -74,7 +75,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		private readonly string m_sInitialScanMsgLabel;
 		private Dictionary<string, string> m_chkParams = new Dictionary<string, string>();
 		private string m_currContextItem;
-		private OpenFileDialogAdapter m_openFileDialog;
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -84,9 +84,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		public CharContextCtrl()
 		{
 			InitializeComponent();
-			m_openFileDialog = new OpenFileDialogAdapter();
-			m_openFileDialog.DefaultExt = "lds";
-			m_openFileDialog.Title = FwCoreDlgs.kstidLanguageFileBrowser;
 
 			gridContext.AutoGenerateColumns = false;
 			colRef.MinimumWidth = 2;
@@ -95,23 +92,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			gridContext.GridColor = ColorHelper.CalculateColor(SystemColors.WindowText,
 				SystemColors.Window, 35);
 			m_sInitialScanMsgLabel = lblScanMsg.Text;
-		}
-
-		/// ------------------------------------------------------------------------------------
-		/// <summary>
-		/// Gets the character property engine to use for this control.
-		/// </summary>
-		/// ------------------------------------------------------------------------------------
-		private ILgCharacterPropertyEngine CharPropEngine
-		{
-			get
-			{
-				if (m_wsContainer.DefaultVernacularWritingSystem != null)
-					return m_wsContainer.DefaultVernacularWritingSystem.CharPropEngine;
-				if (m_charPropEng == null)
-					m_charPropEng = LgIcuCharPropEngineClass.Create();
-				return m_charPropEng;
-			}
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -125,7 +105,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <param name="contextFont">The context font.</param>
 		/// <param name="tokenGrid">The token grid.</param>
 		/// ------------------------------------------------------------------------------------
-		public void Initialize(FdoCache cache, IWritingSystemContainer wsContainer,
+		public void Initialize(LcmCache cache, IWritingSystemContainer wsContainer,
 			CoreWritingSystemDefinition ws, IApp app, Font contextFont, DataGridView tokenGrid)
 		{
 			m_cache = cache;
@@ -166,18 +146,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		{
 			get { return m_sListName; }
 			set { m_sListName = value; }
-		}
-
-		/// ------------------------------------------------------------------------------------
-		/// <summary>
-		/// Gets or sets the initial directory to use if the user chooses to scan a file.
-		/// </summary>
-		/// <value>The initial directory for file scan.</value>
-		/// ------------------------------------------------------------------------------------
-		public string InitialDirectoryForFileScan
-		{
-			get { return m_openFileDialog.InitialDirectory; }
-			set { m_openFileDialog.InitialDirectory = value; }
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -319,7 +287,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// ------------------------------------------------------------------------------------
 		private CharacterCategorizer CharacterCategorizer
 		{
-			get { return new FwCharacterCategorizer(ValidCharacters, CharPropEngine); }
+			get { return new FwCharacterCategorizer(ValidCharacters); }
 		}
 		#endregion
 
@@ -554,12 +522,21 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// ------------------------------------------------------------------------------------
 		private void cmnuScanFile_Click(object sender, EventArgs e)
 		{
-			// Use an open file dialog to let the user specify a file to scan.
-			m_openFileDialog.CheckFileExists = true;
-			m_openFileDialog.Filter = ResourceHelper.FileFilter(FileFilterType.AllFiles);
-
-			if (m_openFileDialog.ShowDialog() == DialogResult.OK)
-				GetTokensSubStrings(m_openFileDialog.FileName);
+			// Let the user specify a Paratext or Toolbox language file to scan.
+			var languageFiles = ResourceHelper.GetResourceString("kstidToolboxLanguageFiles");
+			var allFiles = ResourceHelper.GetResourceString("kstidAllFiles");
+			using (var openFileDialog = new OpenFileDialogAdapter
+			{
+				Title = FwCoreDlgs.kstidLanguageFileBrowser,
+				InitialDirectory = ScriptureProvider.SettingsDirectory,
+				CheckFileExists = true,
+				Filter = FileUtils.FileDialogFilterCaseInsensitiveCombinations(
+					string.Format("{0} ({1})|{1}|{2} ({3})|{3}", languageFiles, "*.lds;*.lng", allFiles, "*.*"))
+			})
+			{
+				if (openFileDialog.ShowDialog() == DialogResult.OK)
+					GetTokensSubStrings(openFileDialog.FileName);
+			}
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -582,9 +559,9 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 				if (tokens == null || tokens.Count == 0)
 				{
-					string msg = (fileName == null) ?
-						String.Format(FwCoreDlgs.kstidNoTokensFoundInCurrentScriptureProj, m_sListName) :
-						String.Format(FwCoreDlgs.kstidNoTokensFoundInFile, m_sListName, m_openFileDialog.FileName);
+					string msg = fileName == null ?
+						string.Format(FwCoreDlgs.kstidNoTokensFoundInCurrentScriptureProj, m_sListName) :
+						string.Format(FwCoreDlgs.kstidNoTokensFoundInFile, m_sListName, fileName);
 					MessageBox.Show(msg, m_app.ApplicationName);
 					ResetContextLists();
 					lblScanMsg.Text = m_sInitialScanMsgLabel;
@@ -654,7 +631,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					if (m_fileData[i].IndexOfAny(controlChars) >= 0)
 						throw new Exception(FWCoreDlgsErrors.ksInvalidControlCharacterFound);
-					m_fileData[i] = CharPropEngine.NormalizeD(m_fileData[i]);
+					m_fileData[i] = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD)
+						.Normalize(m_fileData[i]);
 				}
 			}
 		}
@@ -851,6 +829,13 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		public ContextGrid()
 		{
 			DoubleBuffered = true;
+		}
+
+		/// <summary/>
+		protected override void Dispose(bool disposing)
+		{
+			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + " ******");
+			base.Dispose(disposing);
 		}
 	}
 

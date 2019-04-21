@@ -1,16 +1,9 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: HtmlControl.cs
-// Responsibility: RandyR
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
 
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.ComponentModel;
 using System.Windows.Forms;
 using MsHtmHstInterop;
 using System.Runtime.InteropServices;
@@ -49,6 +42,9 @@ namespace XCore
 				return m_browser;
 			}
 		}
+
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
 		public string URL
 		{
 			get
@@ -90,6 +86,8 @@ namespace XCore
 		/// The HTML text of the document currently loaded in the browser
 		/// TODO: implement get for GeckoFX browser
 		/// </summary>
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
 		public string DocumentText
 		{
 			get
@@ -99,7 +97,7 @@ namespace XCore
 			}
 			set
 			{
-				m_browser.LoadHtml(value);
+				m_browser.LoadHtml(value, null);
 			}
 		}
 
@@ -108,8 +106,6 @@ namespace XCore
 		/// Initializes a new instance of the <see cref="HtmlControl"/> class.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "The offending code compiles only on Windows")]
 		public HtmlControl()
 		{
 			// This call is required by the Windows.Forms Form Designer.
@@ -262,8 +258,6 @@ namespace XCore
 		/// the contents of this method with the code editor.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "The offending code compiles only on Windows")]
 		private void InitializeComponent()
 		{
 //			System.Resources.ResourceManager resources = new System.Resources.ResourceManager(typeof(HtmlControl));

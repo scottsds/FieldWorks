@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -7,21 +7,23 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 using SIL.Utils;
 using XCore;
 
@@ -50,7 +52,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 	/// System.Windows.Forms.Panel
 	/// System.Windows.Forms.ContainerControl
 	/// System.Windows.Forms.UserControl
-	public class DataTree : UserControl, IFWDisposable, IVwNotifyChange, IxCoreColleague, IRefreshableRoot
+	public class DataTree : UserControl, IVwNotifyChange, IxCoreColleague, IRefreshableRoot
 	{
 		/// <summary>
 		/// Occurs when the current slice changes
@@ -67,11 +69,9 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// </summary>
 		private ISilDataAccess m_sda;
 		/// <summary></summary>
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		/// <summary>use SetContextMenuHandler() to subscribe to this event (if you want to provide a Context menu for this DataTree)</summary>
 		protected event SliceShowMenuRequestHandler ShowContextMenuEvent;
-		//protected AutoDataTreeMenuHandler m_autoHandler;
-		/// <summary></summary>
 		/// <summary>the descendent object that is being displayed</summary>
 		protected ICmObject m_descendant;
 		/// <summary></summary>
@@ -123,7 +123,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		// Number of times DeepSuspendLayout has been called without matching DeepResumeLayout.
 		protected int m_cDeepSuspendLayoutCount;
 		protected IPersistenceProvider m_persistenceProvider = null;
-		protected FwStyleSheet m_styleSheet;
+		protected LcmStyleSheet m_styleSheet;
 		protected bool m_fShowAllFields = false;
 		protected ToolTip m_tooltip; // used for slice tree nodes. All tooltips are cleared when we switch records!
 		protected LayoutStates m_layoutState = LayoutStates.klsNormal;
@@ -248,8 +248,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "sc is a reference")]
 		private void InstallSlice(Slice slice, int index)
 		{
 			Debug.Assert(index >= 0 && index <= Slices.Count);
@@ -326,8 +324,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			movedSlice.TakeFocus();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "otherSliceSC is a reference")]
 		private void AdjustSliceSplitPosition(Slice otherSlice)
 		{
 			SplitContainer otherSliceSC = otherSlice.SplitCont;
@@ -346,7 +342,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 		}
 
-		protected void InsertSliceRange(int insertPosition, Set<Slice> slices)
+		protected void InsertSliceRange(int insertPosition, ISet<Slice> slices)
 		{
 			var indexableSlices = new List<Slice>(slices.ToArray());
 			for (int i = indexableSlices.Count - 1; i >= 0; --i)
@@ -508,14 +504,14 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// Otherwise, the datatree will automatically load it when first requested
 		/// (provided it has a cache by that time).
 		/// </summary>
-		public FwStyleSheet StyleSheet
+		public LcmStyleSheet StyleSheet
 		{
 			get
 			{
 				CheckDisposed();
 				if (m_styleSheet == null && m_cache != null)
 				{
-					m_styleSheet = new FwStyleSheet();
+					m_styleSheet = new LcmStyleSheet();
 					m_styleSheet.Init(m_cache, m_cache.LanguageProject.Hvo,
 						LangProjectTags.kflidStyles);
 				}
@@ -650,8 +646,14 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 				// don't set the current slice until we're all setup to do so (LT-7307)
 				if (m_currentSlice == value || m_fSuspendSettingCurrentSlice)
+				{
+					// LT-17633 But if we are trying to set a different slice from the one planned,
+					// we need to remember that. This can happen, for instance, when we insert several
+					// slices to replace a ghost field, but we want the current slice to be other than
+					// the first one.
+					m_currentSliceNew = value;
 					return;
-
+				}
 				// Tell the old geezer it isn't current anymore.
 				if (m_currentSlice != null)
 				{
@@ -699,8 +701,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// if possible, otherwise, the root object. May return null if the nearest Parent is disposed.
 		/// </summary>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "loopSlice is a reference")]
 		private ICmObject DescendantForSlice(Slice slice)
 		{
 			var loopSlice = slice;
@@ -829,8 +829,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// Note: This value is a base value and should never include the LabelIndent offset.
 		/// Each Slice will add its own Label length, when its SplitterDistance is set.
 		/// </remarks>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "sc is a reference")]
 		public int SliceSplitPositionBase
 		{
 			get
@@ -911,22 +909,23 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		private void MonoIgnoreUpdates()
 		{
-			#if __MonoCS__
+#if USEIGNOREUPDATES
 			// static method call to get reasonable performance from mono
-			// IgnoreUpdates is custom functionaily added to mono's winforms
+			// IgnoreUpdates is custom functionality added to mono's winforms
+			// (commit 3233f63ece7e922d03a115ce8d8524e8554be19d)
 
 			// Stops all winforms Size events
 			Control.IgnoreUpdates();
-			#endif
+#endif
 		}
 
 		private void MonoResumeUpdates()
 		{
-			#if __MonoCS__
+#if USEIGNOREUPDATES
 			// static method call to get reasonable performance from mono
 			// Resumes all winforms Size events
 			Control.UnignoreUpdates();
-			#endif
+#endif
 		}
 
 		/// <summary>
@@ -977,7 +976,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						// Do it for the old object.
 						m_rch.Fixup(true);
 						// Root has changed, so reset the handler.
-						m_rch.Setup(m_root, m_rlu);
+						m_rch.Setup(m_root, m_rlu, m_cache);
 					}
 					Invalidate(); // clears any lines left over behind slices.
 					CreateSlices(true);
@@ -1146,14 +1145,8 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// initialization for when you don't actually know what you want to show yet
 		/// (and aren't going to use XML)
 		/// </summary>
-		protected void InitializeBasic(FdoCache cache, bool fHasSplitter)
+		protected void InitializeBasic(LcmCache cache, bool fHasSplitter)
 		{
-			//in a normal user application, this auto menu handler will not be used.
-			//instead, the client of this control will call SetContextMenuHandler()
-			//with a customized handler.
-			// m_autoHandler = new AutoDataTreeMenuHandler(this);
-			// we never use auto anymore			SetContextMenuHandler(new SliceShowMenuRequestHandler(m_autoHandler.GetSliceContextMenu));
-
 			// This has to be created before we start adding slices, so they can be put into it.
 			// (Otherwise we would normally do this in initializeComponent.)
 			m_fHasSplitter = fHasSplitter;
@@ -1168,7 +1161,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <param name="fHasSplitter">if set to <c>true</c> [f has splitter].</param>
 		/// <param name="layouts">The layouts.</param>
 		/// <param name="parts">The parts.</param>
-		public void Initialize(FdoCache cache, bool fHasSplitter, Inventory layouts, Inventory parts)
+		public void Initialize(LcmCache cache, bool fHasSplitter, Inventory layouts, Inventory parts)
 		{
 			CheckDisposed();
 			m_layoutInventory = layouts;
@@ -1265,7 +1258,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			m_rch = null;
 			m_rootLayoutName = null;
 			m_smallImages = null; // Client has to deal with it, since it gave it to us.
-			// protected AutoDataTreeMenuHandler m_autoHandler; // No tusing this data member.
 			m_layoutInventory = null;
 			m_partInventory = null;
 			m_sliceFilter = null;
@@ -1625,8 +1617,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// This actually handles Paint for the contained control that has the slice controls in it.
 		/// </summary>
 		/// <param name="pea">The <see cref="System.Windows.Forms.PaintEventArgs"/> instance containing the event data.</param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "gr is a reference")]
 		void HandlePaintLinesBetweenSlices(PaintEventArgs pea)
 		{
 			Graphics gr = pea.Graphics;
@@ -1709,7 +1699,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		/// <summary></summary>
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			get
 			{
@@ -1759,7 +1749,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Get the template that should be used to display the specified object using the specified layout.
 		/// </summary>
-		private XmlNode GetTemplateForObjLayout(ICmObject obj, string layoutName,
+		public XmlNode GetTemplateForObjLayout(ICmObject obj, string layoutName,
 			string layoutChoiceField)
 		{
 			int classId = obj.ClassID;
@@ -1928,12 +1918,21 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			int insPos = insertPosition;
 			testResult = NodeTestResult.kntrNothing;
 			int cPossible = 0;
+			bool isCustomFieldExists = false;
+			List<XmlNode> duplicateNodes = new List<XmlNode>();
 			// This loop handles the multiple parts of a layout.
 			foreach (XmlNode partRef in template.ChildNodes)
 			{
 				if (partRef.GetType() == typeof(XmlComment))
 					continue;
 
+				XmlNode refAttr = partRef.Attributes["customFields"];
+				if (refAttr != null)
+				{
+					if (isCustomFieldExists)
+						duplicateNodes.Add(partRef);
+					isCustomFieldExists = true;
+				}
 				// This code looks for the a special part definition with an attribute called "customFields"
 				// It doesn't matter what this attribute is set to, as long as it exists.  If this attribute is
 				// found, the custom fields will not be generated.
@@ -1963,6 +1962,11 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						return insertPosition;
 					}
 				}
+			}
+			foreach (XmlNode partRef in duplicateNodes)
+			{
+				template.RemoveChild(partRef);
+				m_layoutInventory.PersistOverrideElement(template);
 			}
 
 			if (cPossible > 0)
@@ -2014,7 +2018,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				case "part":
 					// If the previously selected slice doesn't display in this refresh, we try for the next
 					// visible slice instead.  So m_fSetCurrentSliceNew might still be set.  See LT-9010.
-					string partName = XmlUtils.GetManditoryAttributeValue(partRef, "ref");
+					string partName = XmlUtils.GetMandatoryAttributeValue(partRef, "ref");
 					if (!m_fSetCurrentSliceNew && m_currentSlicePartName != null && obj.Guid == m_currentSliceObjGuid)
 					{
 						for (int clid = obj.ClassID; clid != 0; clid = m_mdc.GetBaseClsId(clid))
@@ -2093,12 +2097,9 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// Append to the part refs of template a suitable one for each custom field of
 		/// the class of obj.
 		/// </summary>
-		/// <param name="obj">The obj.</param>
-		/// <param name="template">The template.</param>
-		/// <param name="insertAfter">The insert after.</param>
-		private void EnsureCustomFields(ICmObject obj, XmlNode template, XmlNode insertAfter)
+		private void EnsureCustomFields(ICmObject obj, XmlNode parent, XmlNode insertAfter)
 		{
-			var interestingClasses = new Set<int>();
+			var interestingClasses = new HashSet<int>();
 			int clsid = obj.ClassID;
 			while (clsid != 0)
 			{
@@ -2112,6 +2113,14 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				{
 					bool exists = false;
 					string target = field.Name;
+
+					XmlNode refAttr = insertAfter.Attributes["ref"];
+					if (refAttr == null)
+					{
+						var persistableParent = FindPersistableParent(parent, parent.OuterXml);
+						AddAttribute(insertAfter, "ref", "_CustomFieldPlaceholder");
+						m_layoutInventory.PersistOverrideElement(persistableParent);
+					}
 					// We could do this search with an XPath but they are excruciatingly slow.
 					// Check all of the siblings, first going forward, then backward
 					for(XmlNode sibling = insertAfter.NextSibling; sibling != null && !exists;	sibling = sibling.NextSibling)
@@ -2128,12 +2137,26 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 					if (exists)
 						continue;
 
-					XmlNode part = template.OwnerDocument.CreateElement("part");
+					XmlNode part = parent.OwnerDocument.CreateElement("part");
 					AddAttribute(part, "ref", "Custom");
 					AddAttribute(part, "param", target);
-					template.InsertAfter(part, insertAfter);
+					parent.InsertAfter(part, insertAfter);
 				}
 			}
+		}
+
+		private static XmlNode FindPersistableParent(XmlNode parent, string originalParentXml)
+		{
+			if(string.Equals("part", parent.Name) || string.Equals("layout", parent.Name))
+			{
+				return parent;
+			}
+			if (parent.ParentNode == null)
+			{
+				throw new ApplicationException(string.Format("Invalid configuration file. No parent with a ref attribute was found.{0}{1}",
+					Environment.NewLine, originalParentXml));
+			}
+			return FindPersistableParent(parent.ParentNode, originalParentXml);
 		}
 
 		private static bool CheckCustomFieldsSibling(XmlNode sibling, string target)
@@ -2275,14 +2298,9 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						break;
 
 					case "RecordChangeHandler":
-						// No, since it isn't owned by the data tree, even though it created it.
-						//if (m_rch != null && m_rch is IDisposable)
-						//	(m_rch as IDisposable).Dispose();
 						if (m_rch != null && !m_rch.HasRecordListUpdater)
 						{
-							// The above version of the Dispose call was bad,
-							// when m_rlu 'owned' the m_rch.
-							// Now, we know there is no 'owning' m_rlu, so we have to do it.
+							// Nobody else 'owns' m_rch, so it is our responsibility to dispose it.
 							m_rch.Dispose();
 							m_rch = null;
 						}
@@ -2294,7 +2312,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						m_rlu = null;
 						ResetRecordListUpdater();
 						// m_rlu may still be null, but that appears to be just fine.
-						m_rch.Setup(obj, m_rlu);
+						m_rch.Setup(obj, m_rlu, m_cache);
 						return NodeTestResult.kntrNothing;
 				}
 			}
@@ -2318,9 +2336,10 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		void m_rch_Disposed(object sender, EventArgs e)
 		{
-			// It was disposed, so clear out the data member.
-			if (m_rch != null)
-				m_rch.Disposed -= m_rch_Disposed;
+			// m_rch may not be the same RCH that was disposed, but if it was, unregister the event and clear out the data member.
+			if (!ReferenceEquals(sender, m_rch))
+				return;
+			m_rch.Disposed -= m_rch_Disposed;
 			m_rch = null;
 		}
 
@@ -2391,7 +2410,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return NodeTestResult.kntrNothing;
 		}
 
-		void MakeGhostSlice(ArrayList path, XmlNode node, ObjSeqHashMap reuseMap, ICmObject obj, Slice parentSlice,
+		internal void MakeGhostSlice(ArrayList path, XmlNode node, ObjSeqHashMap reuseMap, ICmObject obj, Slice parentSlice,
 			int flidEmptyProp, XmlNode caller, int indent, ref int insertPosition)
 		{
 			// It's a really bad idea to add it to the path, since it kills
@@ -2414,7 +2433,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 				slice.Object = obj;
 				slice.Cache = m_cache;
 				slice.Mediator = m_mediator;
-
+				slice.PropTable = parentSlice != null ? parentSlice?.PropTable : this.Slices[0].PropTable;
 
 				// We need a copy since we continue to modify path, so make it as compact as possible.
 				slice.Key = path.ToArray();
@@ -2576,7 +2595,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return contents;
 		}
 
-		private readonly Set<string> m_setInvalidFields = new Set<string>();
+		private readonly HashSet<string> m_setInvalidFields = new HashSet<string>();
 		/// <summary>
 		/// This seems a bit clumsy, but the metadata cache now throws an exception if the class
 		/// id/field name pair isn't valid for GetFieldId2().  Limiting this to only one throw
@@ -3006,17 +3025,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return ShowContextMenuEvent(this, e);
 		}
 
-		///// <summary>
-		///// this is called by a client which normally provides its own custom menu, in order to allow it to
-		///// fall back on an auto menu during development, before the custom menu has been defined.
-		///// </summary>
-		///// <param name="sender"></param>
-		///// <param name="e"></param>
-		//		public ContextMenu GetAutoMenu (object sender, SIL.FieldWorks.Common.Framework.DetailControls.SliceMenuRequestArgs e)
-		//		{
-		//			return m_autoHandler.GetSliceContextMenu(sender, e);
-		//		}
-
 		/// <summary>
 		/// Set the handler which will be invoked when the user right-clicks on the
 		/// TreeNode portion of a slice, or for some other reason we need the context menu.
@@ -3066,8 +3074,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		// Get or create the real slice at index i.
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "slice is a reference")]
 		public Slice FieldAt(int i)
 		{
 			CheckDisposed();
@@ -3260,10 +3266,10 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			int minHeight = GetMinFieldHeight();
 			int desiredWidth = ClientRectangle.Width;
 
-#if __MonoCS__ // FWNX-370: work around https://bugzilla.novell.com/show_bug.cgi?id=609596
-			if (VerticalScroll.Visible)
+			// FWNX-370: work around https://bugzilla.novell.com/show_bug.cgi?id=609596
+			if (Platform.IsMono && VerticalScroll.Visible)
 				desiredWidth -= SystemInformation.VerticalScrollBarWidth;
-#endif
+
 			Point oldPos = AutoScrollPosition;
 			var desiredScrollPosition = new Point(-oldPos.X, -oldPos.Y);
 
@@ -3423,8 +3429,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		//	@param nInd The indent level we want.
 		//	@param idfe An index to the current field. We start looking at the next field.
 		//	@return The index of the next field or 0 if none.
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldOrDummyAt() returns a reference")]
 		public int NextFieldAtIndent(int nInd, int iStart)
 		{
 			CheckDisposed();
@@ -3449,8 +3453,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		//	@param nInd The indent level we want.
 		//	@param idfe An index to the current field. We start looking at the previous field.
 		//	@return The index of the desired field or 0 if none.
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldOrDummyAt() returns a reference")]
 		public int PrevFieldAtIndent(int nInd, int iStart)
 		{
 			CheckDisposed();
@@ -3846,23 +3848,13 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		}
 
 		/// <summary>
-		/// Converts a List of integers into a comma-delimited string of numbers.
-		/// </summary>
-		/// <param name="hvoList"></param>
-		/// <returns></returns>
-		private string ConvertHvoListToString(List<int> hvoList)
-		{
-			return hvoList.ToString(",");
-		}
-
-		/// <summary>
 		/// Common logic shared between OnDisplayJumpToTool and OnJumpToTool.
 		/// forEnableOnly is true when called from OnDisplayJumpToTool.
 		/// </summary>
 		internal Guid GetGuidForJumpToTool(Command cmd, bool forEnableOnly, out string tool)
 		{
-			tool = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "tool");
-			string className = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "className");
+			tool = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "tool");
+			string className = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "className");
 			ICmObject targetObject;
 			if (CurrentSlice == null)
 				targetObject = Root;
@@ -4120,8 +4112,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Invoked by a slice when the user does something to bring up a context menu
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="See TODO comment.")]
 		public void OnShowContextMenu(object sender, TreeNodeEventArgs e)
 		{
 			CheckDisposed();
@@ -4238,8 +4228,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Focus the first slice that can take focus.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldOrDummyAt() and FieldAt() return a reference.")]
 		protected bool FocusFirstPossibleSlice()
 		{
 			int cslice = Slices.Count;
@@ -4290,7 +4278,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			if (m_cache == null || m_root == null)
 				return display.Enabled = false;
 			var command = (Command)commandObject;
-			string className = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "className");
+			string className = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "className");
 			if (className != m_root.ClassName)
 				return display.Enabled = false;
 			string restrictToTool = XmlUtils.GetOptionalAttributeValue(command.Parameters[0], "restrictToTool");
@@ -4308,7 +4296,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			CheckDisposed();
 
 			var command = (Command)argument;
-			string className = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "className");
+			string className = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "className");
 			if (className != m_root.ClassName)
 				return false;
 			string restrictToTool = XmlUtils.GetOptionalAttributeValue(command.Parameters[0], "restrictToTool");
@@ -4331,7 +4319,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			CheckDisposed();
 
 			var command = (Command)commandObject;
-			string className = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "className");
+			string className = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "className");
 			bool fIsValid = false;
 			if (className == "RnGenericRec")
 			{

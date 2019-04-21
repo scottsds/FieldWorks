@@ -66,7 +66,7 @@
 				<part ref="PhoneEnv"/>
 				<part ref="StemName" visibility="ifdata"/>
 				<!-- Special part to indicate where custom fields should be inserted at.  Handled in Common.Framework.DetailControls.DataTree -->
-				<part customFields="here" />
+				<part ref="_CustomFieldPlaceholder" customFields="here" />
 			</indent>
 		</part>
 	</layout>
@@ -81,7 +81,7 @@
 				<part ref="InflectionClasses" visibility="ifdata"/>
 				<part ref="MsEnvFeatures" visibility="ifdata"/>
 				<!-- Special part to indicate where custom fields should be inserted at.  Handled in Common.Framework.DetailControls.DataTree -->
-				<part customFields="here" />
+				<part ref="_CustomFieldPlaceholder" customFields="here" />
 			</indent>
 		</part>
 	</layout>
@@ -122,7 +122,7 @@
 	</layout>
 
 	<layout class="MoAffixProcess" type="detail" name="AsLexemeFormBasic">
-		<part ref="AsLexemeForm" label="Lexeme Form" expansion="expanded">
+		<part ref="AsLexemeForm" shouldNotMerge="true" label="Lexeme Form" expansion="expanded">
 			<indent>
 				<part ref="IsAbstractBasic" label="Is Abstract Form" visibility="never" /> <!-- could use 'ifTrue' if we had it -->
 				<part ref="MorphTypeBasic" visibility="ifdata"/>

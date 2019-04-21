@@ -10,14 +10,17 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.FwCoreDlgControls;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Controls
@@ -28,8 +31,6 @@ namespace SIL.FieldWorks.Common.Controls
 	/// object whose primary purpose is to allow refactoring of this huge method.
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="m_cache is a reference")]
 	public class XmlVcDisplayVec
 	{
 		#region Member Variables
@@ -39,7 +40,7 @@ namespace SIL.FieldWorks.Common.Controls
 		private readonly int m_hvo;
 		private readonly int m_flid;
 		private readonly int m_frag;
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 		private readonly ISilDataAccess m_sda;
 		private readonly ICmObjectRepository m_objRepo;
 		/// <summary>
@@ -87,7 +88,6 @@ namespace SIL.FieldWorks.Common.Controls
 		}
 
 		const string strEng = "en";
-		const int kflidSenseMsa = LexSenseTags.kflidMorphoSyntaxAnalysis;
 
 		/// <summary>
 		/// The main entry point to do the work of the original method.
@@ -212,7 +212,7 @@ namespace SIL.FieldWorks.Common.Controls
 				tssBefore = SetBeforeString(specialAttrsNode, listDelimitNode);
 				// We need a line break here to force the inner pile of paragraphs to begin at
 				// the margin, rather than somewhere in the middle of the line.
-				m_vwEnv.AddString(m_cache.TsStrFactory.MakeString(StringUtils.kChHardLB.ToString(),
+				m_vwEnv.AddString(TsStringUtils.MakeString(StringUtils.kChHardLB.ToString(),
 					m_cache.ServiceLocator.WritingSystems.DefaultAnalysisWritingSystem.Handle));
 				m_vwEnv.OpenInnerPile();
 			}
@@ -311,7 +311,7 @@ namespace SIL.FieldWorks.Common.Controls
 			{
 				var sTag = CalculateAndFormatSenseLabel(hvo, ihvo, xaNum.Value);
 
-				ITsStrBldr tsb = m_cache.TsStrFactory.GetBldr();
+				ITsStrBldr tsb = TsStringUtils.MakeStrBldr();
 				tsb.Replace(0, 0, sTag, ttpNum);
 				ITsString tss = tsb.GetString();
 				m_numberPartRef = listDelimitNode;
@@ -327,7 +327,7 @@ namespace SIL.FieldWorks.Common.Controls
 			{
 				if (sBefore == null)
 					sBefore = String.Empty;
-				tssBefore = m_cache.TsStrFactory.MakeString(sBefore, m_cache.WritingSystemFactory.UserWs);
+				tssBefore = TsStringUtils.MakeString(sBefore, m_cache.WritingSystemFactory.UserWs);
 				tssBefore = ApplyStyleToBeforeString(listDelimitNode, tssBefore);
 				tssBefore = ApplyDelayedNumber(specialAttrsNode, tssBefore);
 			}
@@ -362,7 +362,7 @@ namespace SIL.FieldWorks.Common.Controls
 		private ITsTextProps SetNumberTextProperties(int wsEng, XmlNode listDelimitNode)
 		{
 			ITsTextProps ttpNum;
-			ITsPropsBldr tpb = TsPropsFactoryClass.Create().GetPropsBldr();
+			ITsPropsBldr tpb = TsStringUtils.MakePropsBldr();
 			// TODO: find more appropriate writing system?
 			tpb.SetIntPropValues((int) FwTextPropType.ktptWs, 0, wsEng);
 			string style = XmlUtils.GetOptionalAttributeValue(listDelimitNode, "numstyle", null);
@@ -529,6 +529,20 @@ namespace SIL.FieldWorks.Common.Controls
 					new NumberingStyleComboItem("a  b  c", "%a"),
 					new NumberingStyleComboItem("I  II  III", "%I"),
 					new NumberingStyleComboItem("i  ii  iii", "%i"),
+				};
+			}
+		}
+
+		/// <summary>Returns the list of parent sense number styles</summary>
+		public static List<NumberingStyleComboItem> SupportedParentSenseNumberStyles
+		{
+			get
+			{
+				return new List<NumberingStyleComboItem>
+				{
+					new NumberingStyleComboItem(XMLViewsStrings.ksNone, ""),
+					new NumberingStyleComboItem("Joined", "%j"),
+					new NumberingStyleComboItem("Separated by dot", "%."),
 				};
 			}
 		}

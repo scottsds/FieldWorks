@@ -1,12 +1,10 @@
-﻿// Copyright (c) 2015 SIL International
+﻿// Copyright (c) 2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
@@ -54,33 +52,9 @@ namespace FwBuildTasks
 		/// ------------------------------------------------------------------------------------
 		public override bool Execute()
 		{
-
-			var substitutions = new Dictionary<string, string>();
-			if (!string.IsNullOrEmpty(Symbols))
-			{
-				if (!File.Exists(Symbols))
-				{
-					Log.LogMessage(MessageImportance.High, "Symbol file " + Symbols + " not found");
-					return false;
-				}
-				StreamReader reader = new StreamReader(Symbols);
-				int lineNumber = 1;
-				while (!reader.EndOfStream)
-				{
-					var line = reader.ReadLine();
-					// Ignore empty lines, comments, or if we somehow get a null at the end.
-					if (line == null || line.Trim().Length == 0 || line.StartsWith("//"))
-						continue;
-					var items = line.Split('=');
-					if (items.Length != 2 || items[0].Trim().Length == 0)
-					{
-						Log.LogMessage(MessageImportance.High, "Invalid symbol file: " + Symbols + " line " + lineNumber + " should be Name=Value");
-						return false;
-					}
-					lineNumber++;
-					substitutions[items[0].Trim()] = items[1].Trim();
-				}
-			}
+			Dictionary<string, string> substitutions;
+			if (!BuildUtils.ParseSymbolFile(Symbols, Log, out substitutions))
+				return false;
 
 			string template = Template;
 			bool addedComment = false;
@@ -120,10 +94,7 @@ namespace FwBuildTasks
 					string strDefault = match.Result("${default}");
 					string strEnvValue;
 					substitutions.TryGetValue(strEnv, out strEnvValue);
-					if (strEnvValue != null && strEnvValue != string.Empty)
-						fileContents = regex.Replace(fileContents, strEnvValue, 1, match.Index);
-					else
-						fileContents = regex.Replace(fileContents, strDefault, 1, match.Index);
+					fileContents = regex.Replace(fileContents, string.IsNullOrEmpty(strEnvValue) ? strDefault : strEnvValue, 1, match.Index);
 
 					match = regex.Match(fileContents);
 				}

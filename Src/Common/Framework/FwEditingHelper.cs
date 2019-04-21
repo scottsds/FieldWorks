@@ -12,12 +12,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Resources;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 
 namespace SIL.FieldWorks.Common.Framework
@@ -48,7 +49,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// <param name="cache">The DB connection</param>
 		/// <param name="callbacks">implementation of <see cref="IEditingCallbacks"/></param>
 		/// ------------------------------------------------------------------------------------
-		public FwEditingHelper(FdoCache cache, IEditingCallbacks callbacks)
+		public FwEditingHelper(LcmCache cache, IEditingCallbacks callbacks)
 			: base(cache, callbacks)
 		{
 		}
@@ -248,7 +249,7 @@ namespace SIL.FieldWorks.Common.Framework
 		/// </returns>
 		/// ------------------------------------------------------------------------------------
 		public static bool AddHyperlink(ITsStrBldr strBldr, int ws, string sLinkText, string sUrl,
-			FwStyleSheet stylesheet)
+			LcmStyleSheet stylesheet)
 		{
 			var hyperlinkStyle = stylesheet.FindStyle(StyleServices.Hyperlink);
 			if (hyperlinkStyle == null)
@@ -416,8 +417,7 @@ namespace SIL.FieldWorks.Common.Framework
 			if (propTag == SimpleRootSite.kTagUserPrompt)
 			{
 				ich = 0;
-				ITsStrFactory factory = m_cache.TsStrFactory;
-				tss = factory.MakeString(string.Empty, m_cache.ServiceLocator.WritingSystems.DefaultVernacularWritingSystem.Handle);
+				tss = TsStringUtils.EmptyString(m_cache.ServiceLocator.WritingSystems.DefaultVernacularWritingSystem.Handle);
 				propTag = StTxtParaTags.kflidContents;
 				helper.SetTextPropId(SelectionHelper.SelLimitType.Anchor, StTxtParaTags.kflidContents);
 				helper.SetTextPropId(SelectionHelper.SelLimitType.End, StTxtParaTags.kflidContents);

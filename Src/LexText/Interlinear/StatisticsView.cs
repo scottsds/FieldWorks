@@ -1,31 +1,31 @@
-﻿// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.XWorks;
 using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.IText
 {
-	public partial class StatisticsView : UserControl, IxCoreContentControl, IFWDisposable
+	public partial class StatisticsView : UserControl, IxCoreContentControl
 	{
 		private bool _shouldNotCall;
 
 		private string _areaName;
 		private Mediator _mediator;
 		private PropertyTable _propertyTable;
-		private FdoCache _cache;
+		private LcmCache _cache;
 		private InterlinearTextsRecordClerk m_clerk;
 
 		public StatisticsView()
@@ -64,14 +64,12 @@ namespace SIL.FieldWorks.IText
 
 		#region Implementation of IxCoreColleague
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="RecordClerk.FindClerk() returns a reference")]
 		public void Init(Mediator mediator, PropertyTable propertyTable, XmlNode configurationParameters)
 		{
 			CheckDisposed();
 			_mediator = mediator; //allows the Cache property to function
 			_propertyTable = propertyTable;
-			_cache = _propertyTable.GetValue<FdoCache>("cache");
+			_cache = _propertyTable.GetValue<LcmCache>("cache");
 
 			string name = XmlUtils.GetAttributeValue(configurationParameters, "clerk");
 			var clerk = RecordClerk.FindClerk(_propertyTable, name);
@@ -90,10 +88,6 @@ namespace SIL.FieldWorks.IText
 			mediator.SendMessage("AddContextToHistory", new FwLinkArgs(toolName, Guid.Empty), false);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="REVIEW: I'm not sure if/where Font gets disposed)")]
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		private void RebuildStatisticsTable()
 		{
 			statisticsBox.Clear();
@@ -116,7 +110,7 @@ namespace SIL.FieldWorks.IText
 			int uniqueWords = 0;
 
 			Dictionary<int, int> languageCount = new Dictionary<int, int>();
-			Dictionary<int, Set<String>> languageTypeCount = new Dictionary<int, Set<String>>();
+			Dictionary<int, HashSet<string>> languageTypeCount = new Dictionary<int, HashSet<string>>();
 			//for each interesting text
 			foreach (var text in textList.InterestingTexts)
 			{
@@ -130,10 +124,8 @@ namespace SIL.FieldWorks.IText
 					numberOfSegments += text[index].SegmentsOS.Count;
 					//count all the things analyzed as words
 					var words = new List<IAnalysis>(text[index].Analyses);
-					foreach (var word in words)
-					{
-						var wordForm = word.Wordform;
-						if (wordForm != null)
+					var wordForms = new List<IWfiWordform>(words.Where(x => x.Wordform != null && x.Wordform.ShortName != "???").Select(y => y.Wordform));
+					foreach (var wordForm in wordForms)
 						{
 							var valdWSs = wordForm.Form.AvailableWritingSystemIds;
 							foreach (var ws in valdWSs)
@@ -149,17 +141,16 @@ namespace SIL.FieldWorks.IText
 									languageCount.Add(ws, 1);
 								}
 								//increase the count of unique words(types) for this language
-								Set<String> pair;
+								HashSet<string> pair;
 								if (languageTypeCount.TryGetValue(ws, out pair))
 								{
 									//add the string for this writing system in all lower case to the set, unique count is case insensitive
-									pair.Add(word.Wordform.Form.get_String(ws).Text.ToLower());
+								pair.Add(wordForm.Form.get_String(ws).Text.ToLower());
 								}
 								else
 								{
 									//add the string for this writing system in all lower case to the set, unique count is case insensitive
-									languageTypeCount.Add(ws, new Set<String> { word.Wordform.Form.get_String(ws).Text.ToLower() });
-								}
+								languageTypeCount.Add(ws, new HashSet<string> {wordForm.Form.get_String(ws).Text.ToLower()});
 							}
 						}
 					}
@@ -172,7 +163,7 @@ namespace SIL.FieldWorks.IText
 
 			++row;
 			//add one row for the unique words in each language.
-			foreach (KeyValuePair<int, Set<String>> keyValuePair in languageTypeCount)
+			foreach (KeyValuePair<int, HashSet<string>> keyValuePair in languageTypeCount)
 			{
 				var ws = Cache.WritingSystemFactory.get_EngineOrNull(keyValuePair.Key);
 
@@ -271,8 +262,6 @@ namespace SIL.FieldWorks.IText
 
 		#endregion
 
-		#region Implementation of IFWDisposable
-
 		/// <summary>
 		/// This method throws an ObjectDisposedException if IsDisposed returns
 		/// true.  This is the case where a method or property in an object is being
@@ -287,12 +276,10 @@ namespace SIL.FieldWorks.IText
 				throw new ObjectDisposedException("StatisticsView has been disposed.");
 		}
 
-		#endregion
-
 		/// <summary>
 		/// FDO cache.
 		/// </summary>
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get
 			{

@@ -5,16 +5,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.ServiceModel;
 using System.Threading;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
-
+using SIL.LCModel;
+using SIL.LCModel.Utils;
 using IPCFramework;
+using SIL.PlatformUtilities;
 
 namespace SIL.FieldWorks.Common.FwUtils
 {
@@ -126,7 +125,7 @@ namespace SIL.FieldWorks.Common.FwUtils
 
 		/// <summary>
 		/// constant for locating the nested lift repository (within the "OtherRepositories" path of a project).
-		/// See also SIL.FieldWorks.FDO.FdoFileHelper.OtherRepositories
+		/// See also SIL.FieldWorks.FDO.LcmFileHelper.OtherRepositories
 		/// </summary>
 		public const string LIFT = @"LIFT";
 
@@ -168,8 +167,6 @@ namespace SIL.FieldWorks.Common.FwUtils
 		/// <param name="changesReceived">true if S/R made changes to the project.</param>
 		/// <param name="projectName">Name of the project to be opened after launch returns.</param>
 		/// <returns>true if successful, false otherwise</returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ServiceHost gets disposed in KillTheHost()")]
 		public static bool LaunchFieldworksBridge(string projectFolder, string userName, string command, string projectGuid,
 			int fwmodelVersionNumber, string liftModelVersionNumber, string writingSystemId, Action onNonBlockerCommandComplete,
 			out bool changesReceived, out string projectName)
@@ -213,11 +210,10 @@ namespace SIL.FieldWorks.Common.FwUtils
 			// current culture may have country etc info after a hyphen. FlexBridge just needs the main language ID.
 			// It probably can't ever be null or empty, but let's be as robust as possible.
 			var locale = Thread.CurrentThread.CurrentUICulture.Name;
-#if __MonoCS__
+
 			// Mono doesn't have a plain "zh" locale.  It needs the country code for Chinese.  See FWNX-1255.
-			if (locale != "zh-CN")
-#endif
-			locale = string.IsNullOrWhiteSpace(locale) ? "en" : locale.Split('-')[0];
+			if (!Platform.IsMono || locale != "zh-CN")
+				locale = string.IsNullOrWhiteSpace(locale) ? "en" : locale.Split('-')[0];
 			AddArg(ref args, "-locale", locale);
 
 			if (_noBlockerHostAndCallback != null)
@@ -244,8 +240,18 @@ namespace SIL.FieldWorks.Common.FwUtils
 		private static void LaunchFlexBridge(IIPCHost host, string command, string args, Action onNonBlockerCommandComplete,
 			ref bool changesReceived, ref string projectName)
 		{
+			string flexbridgeLauncher = FullFieldWorksBridgePath();
+			if (MiscUtils.IsUnix)
+			{
+				flexbridgeLauncher = FwDirectoryFinder.FlexBridgeFolder + "/flexbridge";
+			}
+			if (!File.Exists(flexbridgeLauncher))
+			{
+				Console.WriteLine("Warning: Attempting to use non-existent flexbridge launcher {0}", flexbridgeLauncher);
+			}
+
 			// Launch the bridge process.
-			using (Process.Start(FullFieldWorksBridgePath(), args))
+			using (Process.Start(flexbridgeLauncher, args))
 			{
 			}
 
@@ -303,8 +309,6 @@ namespace SIL.FieldWorks.Common.FwUtils
 
 		static IIPCClient _client;
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="REVIEW: It is unclear if disposing the ChannelFactory affects channelClient.")]
 		private static void BeginEmergencyExitChute(string pipeID)
 		{
 			try
@@ -388,7 +392,7 @@ namespace SIL.FieldWorks.Common.FwUtils
 		/// <returns></returns>
 		public static bool DoesProjectHaveLiftRepo(IProjectIdentifier projectId)
 		{
-			string otherRepoPath = Path.Combine(projectId.ProjectFolder, FdoFileHelper.OtherRepositories);
+			string otherRepoPath = Path.Combine(projectId.ProjectFolder, LcmFileHelper.OtherRepositories);
 			if (!Directory.Exists(otherRepoPath))
 				return false;
 			string liftFolder = Directory.EnumerateDirectories(otherRepoPath, "*_LIFT").FirstOrDefault();

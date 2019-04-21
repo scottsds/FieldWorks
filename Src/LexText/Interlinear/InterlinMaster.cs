@@ -8,17 +8,18 @@ using System.Diagnostics;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.Utils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.XWorks;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
 using XCore;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.IText
 {
@@ -183,15 +184,21 @@ namespace SIL.FieldWorks.IText
 
 		internal InterlinLineChoices.InterlinMode GetLineMode()
 		{
-			if (m_tabCtrl.SelectedIndex == (int)TabPageSelection.Gloss)
+			switch (m_tabCtrl.SelectedIndex)
 			{
-				return m_propertyTable.GetBoolProperty(InterlinDocForAnalysis.ksPropertyAddWordsToLexicon, false) ?
-					InterlinLineChoices.InterlinMode.GlossAddWordsToLexicon : InterlinLineChoices.InterlinMode.Gloss;
+				case (int)TabPageSelection.Gloss:
+					return m_propertyTable.GetBoolProperty(InterlinDocForAnalysis.ksPropertyAddWordsToLexicon, false) ?
+						InterlinLineChoices.InterlinMode.GlossAddWordsToLexicon : InterlinLineChoices.InterlinMode.Gloss;
+
+				case (int)TabPageSelection.ConstituentChart:
+					return InterlinLineChoices.InterlinMode.Chart;
+
+				case (int)TabPageSelection.TaggingView:
+					return InterlinLineChoices.InterlinMode.Gloss;
+
+				default:
+					return InterlinLineChoices.InterlinMode.Analyze;
 			}
-			if (m_tabCtrl.SelectedIndex == (int)TabPageSelection.TaggingView ||
-				m_tabCtrl.SelectedIndex == (int)TabPageSelection.ConstituentChart)
-				return InterlinLineChoices.InterlinMode.Gloss;
-			return InterlinLineChoices.InterlinMode.Analyze;
 		}
 
 		protected override void OnHandleCreated(EventArgs e)
@@ -739,6 +746,14 @@ namespace SIL.FieldWorks.IText
 				m_tcPane.StyleSheet = m_styleSheet;
 				m_tcPane.Visible = true;
 			}
+			if (m_bookmarks != null && m_bookmarks.Count > 0)
+			{
+				foreach (InterAreaBookmark bookmark in m_bookmarks.Values)
+				{
+					bookmark.Init(this, Cache, propertyTable);
+				}
+			}
+
 			FinishInitTabPages(configurationParameters);
 			SetInitialTabPage();
 			m_currentTool = configurationParameters.Attributes["clerk"].Value;
@@ -850,7 +865,7 @@ namespace SIL.FieldWorks.IText
 					var rootObj = Clerk.CurrentObject;
 					if (rootObj.ClassID == TextTags.kClassId)
 					{
-						var text = rootObj as FDO.IText;
+						var text = rootObj as LCModel.IText;
 						return text.Name.AnalysisDefaultWritingSystem.Text;
 					}
 				}
@@ -960,7 +975,7 @@ namespace SIL.FieldWorks.IText
 					if(stText.MainWritingSystem == globalDefaultWs)
 					{
 						NonUndoableUnitOfWorkHelper.Do(Cache.ActionHandlerAccessor, () =>
-							((IStTxtPara)stText.ParagraphsOS[0]).Contents = TsStringUtils.MakeTss(string.Empty, Cache.DefaultVernWs));
+							((IStTxtPara)stText.ParagraphsOS[0]).Contents = TsStringUtils.MakeString(string.Empty, Cache.DefaultVernWs));
 					}
 
 					// since we have no text, we should not sit on any of the analyses tabs,
@@ -1245,8 +1260,8 @@ namespace SIL.FieldWorks.IText
 			ref UIItemDisplayProperties display)
 		{
 			bool fShouldDisplay = (CurrentInterlinearTabControl != null &&
-				CurrentInterlinearTabControl is InterlinDocRootSiteBase &&
-				!(CurrentInterlinearTabControl is InterlinDocChart));
+				(CurrentInterlinearTabControl is InterlinDocRootSiteBase ||
+				CurrentInterlinearTabControl is InterlinDocChart));
 			display.Visible = fShouldDisplay;
 			display.Enabled = fShouldDisplay;
 			return true;
@@ -1260,6 +1275,8 @@ namespace SIL.FieldWorks.IText
 		{
 			if (CurrentInterlinearTabControl != null && CurrentInterlinearTabControl is InterlinDocRootSiteBase)
 				(CurrentInterlinearTabControl as InterlinDocRootSiteBase).OnConfigureInterlinear(argument);
+			else if (CurrentInterlinearTabControl != null && CurrentInterlinearTabControl is InterlinDocChart)
+				(CurrentInterlinearTabControl as InterlinDocChart).OnConfigureInterlinear(argument);
 
 			return true; // We handled this
 		}
@@ -1296,7 +1313,7 @@ namespace SIL.FieldWorks.IText
 				Guid guid = Guid.Empty;
 				if (Clerk.CurrentObject != null)
 					guid = Clerk.CurrentObject.Guid;
-				FdoCache cache = Cache;
+				LcmCache cache = Cache;
 				// Not sure what will happen with guid == Guid.Empty on the link...
 				FwLinkArgs link = new FwLinkArgs(toolName, guid, InterlinearTab.ToString());
 				link.PropertyTableEntries.Add(new Property("InterlinearTab",

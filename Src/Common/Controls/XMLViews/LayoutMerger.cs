@@ -1,10 +1,11 @@
-﻿// Copyright (c) 2015 SIL International
+﻿// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
+using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Xml;
-using SIL.Utils;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.Xml;
 using XCore;
@@ -58,10 +59,13 @@ namespace SIL.FieldWorks.Common.Controls
 		/// But we only want to do that ONCE, not for every duplicate of the preceding match node.
 		/// </summary>
 		private Dictionary<string, bool> m_oldPartsFound;
-		private Set<XmlNode> m_insertedMissing; // missing nodes we already inserted.
-		Set<string> m_safeAttrs = new Set<string>(
-			new string[] { "before", "after", "sep", "ws", "style", "showLabels", "number", "numstyle", "numsingle", "visibility",
-				"singlegraminfofirst", "showasindentedpara", "reltypeseq", "dup","entrytypeseq" });
+		private HashSet<XmlNode> m_insertedMissing; // missing nodes we already inserted.
+
+		private readonly HashSet<string> m_safeAttrs = new HashSet<string>
+		{
+			"before", "after", "sep", "ws", "style", "showLabels", "number", "numstyle", "numsingle", "visibility",
+			"singlegraminfofirst", "showasindentedpara", "reltypeseq", "dup", "entrytypeseq", "flowType"
+		};
 
 		private const string NameAttr = "name";
 		private const string LabelAttr = "label";
@@ -81,7 +85,7 @@ namespace SIL.FieldWorks.Common.Controls
 			m_newMaster = newMaster;
 			m_oldConfigured = oldConfigured;
 			m_dest = dest;
-			m_insertedMissing = new Set<XmlNode>();
+			m_insertedMissing = new HashSet<XmlNode>();
 			m_output = m_dest.CreateElement(newMaster.Name);
 			m_layoutParamAttrSuffix = oldLayoutSuffix;
 			CopyAttributes(m_newMaster, m_output);
@@ -169,17 +173,32 @@ namespace SIL.FieldWorks.Common.Controls
 			return key;
 		}
 
-		// For most parts, the key is the ref attribute, but if that is $child, it's a custom field and
-		// the label is the best way to distinguish. On the other hand, we need to be able to distinguish
-		// parts that have been duplicated too, so we have a second sort of key that also uses the dup attribute.
-		// This allows us to compare different oldConfigured nodes with the relevant newMaster node to see
-		// if this one is a duplicate node.
-		private string GetKeyWithDup(XmlNode node)
+		/// <summary>
+		/// For most parts, the key is the ref attribute, but if that is $child, it's a custom field and
+		/// the label is the best way to distinguish. On the other hand, we need to be able to distinguish
+		/// parts that have been duplicated too, so we have a second sort of key that also uses the dup attribute.
+		/// This allows us to compare different oldConfigured nodes with the relevant newMaster node to see
+		/// if this one is a duplicate node.
+		/// </summary>
+		/// <param name="node">XmlNode from old configured parts Dictionary</param>
+		/// <param name="isInitializing">When building the parts dictionary this should be true</param>
+		/// <returns>Key with dup value</returns>
+		private string GetKeyWithDup(XmlNode node, bool isInitializing)
 		{
 			var key = Utils.XmlUtils.GetOptionalAttributeValue(node, RefAttr, string.Empty);
 			if (key == ChildStr)
 				key = Utils.XmlUtils.GetOptionalAttributeValue(node, LabelAttr, ChildStr);
 			var dup = Utils.XmlUtils.GetOptionalAttributeValue(node, DupAttr, string.Empty);
+			if (isInitializing && m_labelAttrSuffix.ContainsKey(key + dup))
+			{
+				if (!dup.Contains(".")) return key + dup;
+				//numIncr value are getting from the label attribute text which are between the paranthesis
+				var labelKey = Utils.XmlUtils.GetOptionalAttributeValue(node, LabelAttr, ChildStr);
+				var numIncr = Regex.Match(labelKey, @"\(([^)]*)\)").Groups[1].Value;
+				dup = String.Join(".", dup + "-" + numIncr);
+				//Updating dup value in node attribute
+				if (node.Attributes != null) node.Attributes["dup"].Value = dup;
+			}
 			return key + dup;
 		}
 
@@ -194,11 +213,15 @@ namespace SIL.FieldWorks.Common.Controls
 					continue;
 				var baseKey = GetKey(child);
 				m_oldPartsFound[baseKey] = false;
-				var dupKey = GetKeyWithDup(child);
+				var dupKey = GetKeyWithDup(child, true);
 				if (dupKey == baseKey)
 					continue;
-				m_labelAttrSuffix.Add(dupKey, LayoutKeyUtils.GetPossibleLabelSuffix(child));
-				m_partLevelParamAttrSuffix.Add(dupKey, LayoutKeyUtils.GetPossibleParamSuffix(child));
+				// Due to an old bug some configurations have bad data with indistinguishable duplicate nodes. Just drop the extra ones.
+				if (!m_labelAttrSuffix.ContainsKey(dupKey))
+				{
+					m_labelAttrSuffix.Add(dupKey, LayoutKeyUtils.GetPossibleLabelSuffix(child));
+					m_partLevelParamAttrSuffix.Add(dupKey, LayoutKeyUtils.GetPossibleParamSuffix(child));
+				}
 			}
 		}
 
@@ -241,7 +264,7 @@ namespace SIL.FieldWorks.Common.Controls
 				{
 					XmlNode copy = CopyToOutput(child);
 					CopySafeAttrs(copy, oldNode);
-					var dupKey = GetKeyWithDup(oldNode);
+					var dupKey = GetKeyWithDup(oldNode, false);
 					if (dupKey != key)
 					{
 						// This duplicate may have suffixes to attach
@@ -288,8 +311,24 @@ namespace SIL.FieldWorks.Common.Controls
 			if (oldConfiguredPartRef.Attributes == null)
 				return;
 			foreach (XmlAttribute xa in oldConfiguredPartRef.Attributes)
+			{
 				if (m_safeAttrs.Contains(xa.Name))
+				{
 					Utils.XmlUtils.SetAttribute(copy, xa.Name, xa.Value);
+				}
+				else if (NeedsAsParaParamSet(copy, xa))
+				{
+					// If the param value has a known suffix in the oldConfigured part, we should keep that suffix during migration
+					Utils.XmlUtils.SetAttribute(copy, ParamAttr,
+						xa.Value.Substring(0, xa.Value.IndexOf("_AsPara", StringComparison.Ordinal) + "_AsPara".Length)); // truncate after _AsPara
+				}
+			}
+		}
+
+		private static bool NeedsAsParaParamSet(XmlNode copy, XmlAttribute xa)
+		{
+			return xa.Name == ParamAttr && xa.Value.Contains("_AsPara")
+				&& copy.Attributes != null && copy.Attributes[ParamAttr] != null && !copy.Attributes[ParamAttr].Value.Contains("_AsPara");
 		}
 
 		/// <summary>

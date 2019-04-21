@@ -3,15 +3,15 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
@@ -80,9 +80,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			m_objectsLabel.Text = LexTextControls.ksLexicalEntries;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "searchEngine is disposed by the mediator.")]
-		protected override void InitializeMatchingObjects(FdoCache cache)
+		protected override void InitializeMatchingObjects(LcmCache cache)
 		{
 			var xnWindow = m_propertyTable.GetValue<XmlNode>("WindowConfiguration");
 			XmlNode configNode = xnWindow.SelectSingleNode("controls/parameters/guicontrol[@id=\"matchingEntries\"]/parameters");
@@ -165,7 +163,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		protected IEnumerable<SearchField> GetFields(string str, int ws)
 		{
-			var tssKey = m_tsf.MakeString(str, ws);
+			var tssKey = TsStringUtils.MakeString(str, ws);
 			if (m_vernHvos.Contains(ws))
 			{
 				if (m_matchingObjectsBrowser.IsVisibleColumn("EntryHeadword") || m_matchingObjectsBrowser.IsVisibleColumn("CitationForm"))
@@ -179,8 +177,8 @@ namespace SIL.FieldWorks.LexText.Controls
 			{
 				if (m_matchingObjectsBrowser.IsVisibleColumn("Glosses"))
 					yield return new SearchField(LexSenseTags.kflidGloss, tssKey);
-				if (m_matchingObjectsBrowser.IsVisibleColumn("Reversals"))
-					yield return new SearchField(LexSenseTags.kflidReversalEntries, tssKey);
+/*				if (m_matchingObjectsBrowser.IsVisibleColumn("Reversals"))
+					yield return new SearchField(LexSenseTags.kflidReversalEntries, tssKey);*/
 				if (m_matchingObjectsBrowser.IsVisibleColumn("Definitions"))
 					yield return new SearchField(LexSenseTags.kflidDefinition, tssKey);
 			}
@@ -227,7 +225,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			using (var dlg = new InsertEntryDlg())
 			{
 				string form = m_tbForm.Text.Trim();
-				ITsString tssFormTrimmed = TsStringUtils.MakeTss(form, TsStringUtils.GetWsAtOffset(m_tbForm.Tss, 0));
+				ITsString tssFormTrimmed = TsStringUtils.MakeString(form, TsStringUtils.GetWsAtOffset(m_tbForm.Tss, 0));
 				dlg.SetDlgInfo(m_cache, tssFormTrimmed, m_mediator, m_propertyTable);
 				if (dlg.ShowDialog(this) == DialogResult.OK)
 				{

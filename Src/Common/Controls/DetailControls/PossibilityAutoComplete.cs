@@ -1,26 +1,28 @@
-﻿// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.ObjectModel;
+using SIL.PlatformUtilities;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
 {
-	public class PossibilityAutoComplete : FwDisposableBase
+	public class PossibilityAutoComplete : DisposableBase
 	{
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 		private readonly Control m_control;
 		private readonly string m_displayNameProperty;
 		private readonly string m_displayWs;
@@ -36,7 +38,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		public event EventHandler PossibilitySelected;
 
-		public PossibilityAutoComplete(FdoCache cache, Mediator mediator, PropertyTable propertyTable, ICmPossibilityList list, Control control,
+		public PossibilityAutoComplete(LcmCache cache, Mediator mediator, PropertyTable propertyTable, ICmPossibilityList list, Control control,
 			string displayNameProperty, string displayWs)
 		{
 			m_cache = cache;
@@ -82,6 +84,12 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			m_listBox.Dispose();
 
 			base.DisposeManagedResources();
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + " ******");
+			base.Dispose(disposing);
 		}
 
 		protected virtual void OnItemSelected(EventArgs e)
@@ -238,9 +246,9 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 						m_searcher.Add(poss, 0, tss);
 						if (name != null)
 						{
-							var tisb = TsIncStrBldrClass.Create();
+							var tisb = TsStringUtils.MakeIncStrBldr();
 							tisb.AppendTsString(tss);
-							tisb.AppendTsString(m_cache.TsStrFactory.MakeString(" - ", m_cache.DefaultUserWs));
+							tisb.AppendTsString(TsStringUtils.MakeString(" - ", m_cache.DefaultUserWs));
 							tisb.AppendTsString(name);
 							m_searcher.Add(poss, 0, tisb.GetString());
 						}
@@ -257,15 +265,16 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <returns></returns>
 		private static bool ShouldAbort()
 		{
-#if !__MonoCS__
+			if (Platform.IsMono)
+			{
+				// ShouldAbort seems to be used for optimization purposes so returning false
+				// just loses the optimization.
+				return false;
+			}
+
 			var msg = new Win32.MSG();
 			return Win32.PeekMessage(ref msg, IntPtr.Zero, (uint)Win32.WinMsgs.WM_KEYDOWN, (uint)Win32.WinMsgs.WM_KEYDOWN,
 				(uint)Win32.PeekFlags.PM_NOREMOVE);
-#else
-			// ShouldAbort seems to be used for optimization purposes so returing false
-			// just loses the optimization.
-			return false;
-#endif
 		}
 	}
 }

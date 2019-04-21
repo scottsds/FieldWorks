@@ -1,28 +1,28 @@
-// Copyright (c) 2004-2013 SIL International
+// Copyright (c) 2004-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 //
-// File: RecordSorter.cs
-// History: John Hatton, created
-// Last reviewed:
-//
 // <remarks>
 //	At the moment (April 2004), the only concrete instance of this class (PropertyRecordSorter)
-//		does sorting in memory,	based on a FDO property.
+//		does sorting in memory,	based on a LCM property.
 //	This does not imply that all sorting will always be done in memory, only that we haven't
 //	yet designed or implemented a way to do the sorting while querying.
 // </remarks>
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel;
 using SIL.FieldWorks.Language;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using SIL.WritingSystems;
 
@@ -38,7 +38,7 @@ namespace SIL.FieldWorks.Filters
 	}
 
 	/// <summary>
-	/// sort (in memory) based on in FDO property
+	/// sort (in memory) based on in LCM property
 	/// </summary>
 	public class PropertyRecordSorter : RecordSorter
 	{
@@ -46,7 +46,7 @@ namespace SIL.FieldWorks.Filters
 		/// <summary></summary>
 		protected string m_propertyName;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -101,7 +101,7 @@ namespace SIL.FieldWorks.Filters
 			Init(node);
 		}
 
-		public override FdoCache Cache
+		public override LcmCache Cache
 		{
 			set
 			{
@@ -129,7 +129,7 @@ namespace SIL.FieldWorks.Filters
 		/// ------------------------------------------------------------------------------------
 		protected void Init(XmlNode configuration)
 		{
-			m_propertyName =XmlUtils.GetManditoryAttributeValue(configuration, "sortProperty");
+			m_propertyName = XmlUtils.GetMandatoryAttributeValue(configuration, "sortProperty");
 		}
 
 		/// <summary>
@@ -138,7 +138,7 @@ namespace SIL.FieldWorks.Filters
 		/// <returns></returns>
 		protected internal override IComparer getComparer()
 		{
-			var fc = new FdoCompare(m_propertyName, m_cache);
+			var fc = new LcmCompare(m_propertyName, m_cache);
 			return fc;
 		}
 
@@ -155,10 +155,10 @@ namespace SIL.FieldWorks.Filters
 			int tc1 = Environment.TickCount;
 #endif
 			m_comp = getComparer();
-			if (m_comp is FdoCompare)
+			if (m_comp is LcmCompare)
 			{
 				//(m_comp as FdoCompare).Init();
-				(m_comp as FdoCompare).ComparisonNoter = this;
+				(m_comp as LcmCompare).ComparisonNoter = this;
 				m_comparisonsDone = 0;
 				m_percentDone = 0;
 				// Make sure at least 1 so we don't divide by zero.
@@ -190,7 +190,7 @@ namespace SIL.FieldWorks.Filters
 		/// ------------------------------------------------------------------------------------
 		public override void MergeInto(/*ref*/ ArrayList records, ArrayList newRecords)
 		{
-			RecordSorter.FdoCompare fc = (RecordSorter.FdoCompare) new RecordSorter.FdoCompare(m_propertyName, m_cache);
+			RecordSorter.LcmCompare fc = (RecordSorter.LcmCompare) new RecordSorter.LcmCompare(m_propertyName, m_cache);
 			MergeInto(records, newRecords, (IComparer) fc);
 			fc.CloseCollatingEngine(); // Release the ICU data file.
 		}
@@ -201,7 +201,7 @@ namespace SIL.FieldWorks.Filters
 		/// <param name="cache"></param>
 		/// <param name="configuration"></param>
 		/// <returns></returns>
-		static public PropertyRecordSorter Create(FdoCache cache, XmlNode configuration)
+		static public PropertyRecordSorter Create(LcmCache cache, XmlNode configuration)
 		{
 			PropertyRecordSorter sorter = (PropertyRecordSorter)DynamicLoader.CreateObject(configuration);
 			sorter. Init (configuration);
@@ -212,7 +212,7 @@ namespace SIL.FieldWorks.Filters
 	/// <summary>
 	/// Abstract RecordSorter base class.
 	/// </summary>
-	public abstract class RecordSorter : IPersistAsXml, IStoresFdoCache,
+	public abstract class RecordSorter : IPersistAsXml, IStoresLcmCache,
 		IReportsSortProgress, INoteComparision
 	{
 		/// <summary>
@@ -239,11 +239,11 @@ namespace SIL.FieldWorks.Filters
 		{
 		}
 
-		#region IStoresFdoCache
+		#region IStoresLcmCache
 		/// <summary>
-		/// Set an FdoCache for anything that needs to know.
+		/// Set an LcmCache for anything that needs to know.
 		/// </summary>
-		public virtual FdoCache Cache
+		public virtual LcmCache Cache
 		{
 			set
 			{
@@ -259,7 +259,7 @@ namespace SIL.FieldWorks.Filters
 		{
 			set { }// do nothing by default.
 		}
-		#endregion IStoresFdoCache
+		#endregion IStoresLcmCache
 
 		/// <summary>
 		/// Method to retrieve the IComparer used by this sorter
@@ -343,7 +343,7 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		///
 		/// ------------------------------------------------------------------------------------
-		protected class FdoCompare : IComparer, IPersistAsXml
+		protected class LcmCompare : IComparer, IPersistAsXml
 		{
 			/// <summary></summary>
 			protected string m_propertyName;
@@ -354,15 +354,12 @@ namespace SIL.FieldWorks.Filters
 			internal INoteComparision ComparisonNoter { get; set; }
 			private Dictionary<object, string> m_sortKeyCache;
 
-			private FdoCache m_cache;
+			private LcmCache m_cache;
 
-			/// --------------------------------------------------------------------------------
 			/// <summary>
 			/// Initializes a new instance of the <see cref="T:FdoCompare"/> class.
 			/// </summary>
-			/// <param name="propertyName">Name of the property.</param>
-			/// --------------------------------------------------------------------------------
-			public FdoCompare(string propertyName, FdoCache cache)
+			public LcmCompare(string propertyName, LcmCache cache)
 			{
 				m_cache = cache;
 				Init();
@@ -374,7 +371,7 @@ namespace SIL.FieldWorks.Filters
 			/// <summary>
 			/// This constructor is intended to be used for persistence with IPersistAsXml
 			/// </summary>
-			public FdoCompare()
+			public LcmCompare()
 			{
 				Init();
 			}
@@ -415,7 +412,7 @@ namespace SIL.FieldWorks.Filters
 			/// <param name="node"></param>
 			public void InitXml(XmlNode node)
 			{
-				m_propertyName = XmlUtils.GetManditoryAttributeValue(node, "property");
+				m_propertyName = XmlUtils.GetMandatoryAttributeValue(node, "property");
 			}
 
 			/// --------------------------------------------------------------------------------
@@ -523,8 +520,6 @@ namespace SIL.FieldWorks.Filters
 			/// </summary>
 			/// <param name="obj"></param>
 			/// <returns></returns>
-			[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-				Justification="See TODO-Linux comment")]
 			public override bool Equals(object obj)
 			{
 				if (obj == null)
@@ -533,7 +528,7 @@ namespace SIL.FieldWorks.Filters
 				// is marked with [MonoTODO] and might not work as expected in 4.0.
 				if (this.GetType() != obj.GetType())
 					return false;
-				FdoCompare that = (FdoCompare)obj;
+				LcmCompare that = (LcmCompare)obj;
 				if (this.m_fUseKeys != that.m_fUseKeys)
 					return false;
 				if (this.m_collater != that.m_collater)
@@ -636,8 +631,6 @@ namespace SIL.FieldWorks.Filters
 			/// </summary>
 			/// <param name="obj"></param>
 			/// <returns></returns>
-			[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-				Justification="See TODO-Linux comment")]
 			public override bool Equals(object obj)
 			{
 				if (obj == null)
@@ -846,7 +839,7 @@ namespace SIL.FieldWorks.Filters
 			}
 		}
 
-		public override FdoCache Cache
+		public override LcmCache Cache
 		{
 			set
 			{
@@ -976,9 +969,9 @@ namespace SIL.FieldWorks.Filters
 				return true;
 
 			// FdoComparers on the same property?
-			FdoCompare firstFdo = first as FdoCompare;
-			FdoCompare secondFdo = second as FdoCompare;
-			if (firstFdo != null && secondFdo != null && firstFdo.PropertyName == secondFdo.PropertyName)
+			LcmCompare firstLcm = first as LcmCompare;
+			LcmCompare secondLcm = second as LcmCompare;
+			if (firstLcm != null && secondLcm != null && firstLcm.PropertyName == secondLcm.PropertyName)
 				return true;
 
 			// not the same any way we know about
@@ -1044,14 +1037,14 @@ namespace SIL.FieldWorks.Filters
 		}
 
 		/// <summary>
-		/// Set an FdoCache for anything that needs to know.
+		/// Set an LcmCache for anything that needs to know.
 		/// </summary>
-		public override FdoCache Cache
+		public override LcmCache Cache
 		{
 			set
 			{
-				if (m_comp is IStoresFdoCache)
-					(m_comp as IStoresFdoCache).Cache = value;
+				if (m_comp is IStoresLcmCache)
+					(m_comp as IStoresLcmCache).Cache = value;
 			}
 		}
 
@@ -1134,8 +1127,6 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		public override bool Equals(object obj)
 		{
 			if (obj == null)
@@ -1182,7 +1173,7 @@ namespace SIL.FieldWorks.Filters
 	/// object to obtain strings from the KeyObject hvo, then
 	/// a (simpler) IComparer to compare the strings.
 	/// </summary>
-	public class StringFinderCompare : IComparer, IPersistAsXml, IStoresFdoCache, IStoresDataAccess,
+	public class StringFinderCompare : IComparer, IPersistAsXml, IStoresLcmCache, IStoresDataAccess,
 		ICloneable
 	{
 		/// <summary></summary>
@@ -1505,13 +1496,13 @@ namespace SIL.FieldWorks.Filters
 				{
 					ch = (int)ch1;
 				}
-				if (Icu.IsAlphabetic(ch))
+				if (Icu.Character.IsAlphabetic(ch))
 				{
 					++cchOrtho;		// Seems not to include UCHAR_DIACRITIC.
 				}
 				else
 				{
-					if (Icu.IsIdeographic(ch))
+					if (Icu.Character.IsIdeographic(ch))
 						++cchOrtho;
 				}
 			}
@@ -1553,19 +1544,19 @@ namespace SIL.FieldWorks.Filters
 
 		#endregion
 
-		#region IStoresFdoCache members
+		#region IStoresLcmCache members
 
 		/// <summary>
 		/// Given a cache, see whether your finder wants to know about it.
 		/// </summary>
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			set
 			{
-				if (m_finder is IStoresFdoCache)
-					((IStoresFdoCache) m_finder).Cache = value;
-				if (m_subComp is IStoresFdoCache)
-					((IStoresFdoCache) m_subComp).Cache = value;
+				if (m_finder is IStoresLcmCache)
+					((IStoresLcmCache) m_finder).Cache = value;
+				if (m_subComp is IStoresLcmCache)
+					((IStoresLcmCache) m_subComp).Cache = value;
 			}
 		}
 		#endregion
@@ -1593,8 +1584,6 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		public override bool Equals(object obj)
 		{
 			if (obj == null)
@@ -1671,7 +1660,7 @@ namespace SIL.FieldWorks.Filters
 	/// a ReverseComparer if necessary, but can also unwrap an existing one to retrieve
 	/// the original comparer.
 	/// </summary>
-	public class ReverseComparer : IComparer, IPersistAsXml, IStoresFdoCache, IStoresDataAccess, ICloneable
+	public class ReverseComparer : IComparer, IPersistAsXml, IStoresLcmCache, IStoresDataAccess, ICloneable
 	{
 		/// <summary>
 		/// Reference to comparer
@@ -1772,8 +1761,6 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		public override bool Equals(object obj)
 		{
 			if (obj == null)
@@ -1802,12 +1789,12 @@ namespace SIL.FieldWorks.Filters
 			return hash;
 		}
 
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			set
 			{
-				if (m_comp is IStoresFdoCache)
-					((IStoresFdoCache) m_comp).Cache = value;
+				if (m_comp is IStoresLcmCache)
+					((IStoresLcmCache) m_comp).Cache = value;
 			}
 		}
 
@@ -1895,8 +1882,6 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		public override bool Equals(object obj)
 		{
 			if (obj == null)
@@ -2098,7 +2083,7 @@ namespace SIL.FieldWorks.Filters
 		/// ------------------------------------------------------------------------------------------
 		public void InitXml(XmlNode node)
 		{
-			m_sWs = XmlUtils.GetManditoryAttributeValue(node, "ws");
+			m_sWs = XmlUtils.GetMandatoryAttributeValue(node, "ws");
 		}
 
 		#endregion
@@ -2108,8 +2093,6 @@ namespace SIL.FieldWorks.Filters
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		public override bool Equals(object obj)
 		{
 			if (obj == null)
@@ -2162,10 +2145,10 @@ namespace SIL.FieldWorks.Filters
 	/// <summary>
 	/// A comparer which uses the writing system collator to compare strings.
 	/// </summary>
-	public class WritingSystemComparer : IComparer, IPersistAsXml, IStoresFdoCache
+	public class WritingSystemComparer : IComparer, IPersistAsXml, IStoresLcmCache
 	{
 		private string m_wsId;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private CoreWritingSystemDefinition m_ws;
 
 		#region Constructors, etc.
@@ -2186,7 +2169,7 @@ namespace SIL.FieldWorks.Filters
 		{
 		}
 
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			set { m_cache = value; }
 		}
@@ -2236,7 +2219,7 @@ namespace SIL.FieldWorks.Filters
 		/// <param name="node">The node.</param>
 		public void InitXml(XmlNode node)
 		{
-			m_wsId = XmlUtils.GetManditoryAttributeValue(node, "ws");
+			m_wsId = XmlUtils.GetMandatoryAttributeValue(node, "ws");
 		}
 
 		#endregion

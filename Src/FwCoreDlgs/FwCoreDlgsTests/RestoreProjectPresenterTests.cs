@@ -8,11 +8,10 @@ using System;
 using System.IO;
 using NUnit.Framework;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices.BackupRestore;
-using SIL.FieldWorks.FDO.FDOTests;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices.BackupRestore;
 using SIL.FieldWorks.FwCoreDlgs.BackupRestore;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -52,7 +51,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		{
 			var restoreProjectPresenter = new RestoreProjectPresenter(null, string.Empty);
 			BackupFileSettings backupSettings = new BackupFileSettings(
-				Path.ChangeExtension("dummy", FdoFileHelper.ksFwBackupFileExtension), false);
+				Path.ChangeExtension("dummy", LcmFileHelper.ksFwBackupFileExtension), false);
 			// This is needed to thwart BackupFileSettings's normal logic to populate the flags
 			// from the backup zip file
 			ReflectionHelper.SetField(backupSettings, "m_projectName", "dummy");
@@ -104,7 +103,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		[Test]
 		public void DefaultBackupFile_BackupForCurrentProjectExists()
 		{
-			BackupProjectSettings backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory);
+			var backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory, "Version: 1.0");
 			string backupFileName1 = backupSettings.ZipFileName;
 			m_fileOs.AddExistingFile(backupFileName1);
 			// Force the second backup to appear to be older
@@ -124,7 +123,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		[Test]
 		public void DefaultBackupFile_BackupsForOtherProjectsButNotCurrent()
 		{
-			BackupProjectSettings backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory);
+			var backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory, "Version: 1.0");
 			backupSettings.ProjectName = "AAA";
 			string backupFileName1 = backupSettings.ZipFileName;
 			m_fileOs.AddExistingFile(backupFileName1);
@@ -156,7 +155,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			string proj3 = Path.Combine(Path.Combine(FwDirectoryFinder.ProjectsDirectory, "AAA-01"), "AAA-01.fwdata");
 			m_fileOs.AddExistingFile(proj3);
 
-			BackupProjectSettings backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory);
+			var backupSettings = new BackupProjectSettings(Cache, null, FwDirectoryFinder.DefaultBackupDirectory, "Version: 1.0");
 			backupSettings.ProjectName = "AAA";
 			string backupFileName1 = backupSettings.ZipFileName;
 			m_fileOs.AddExistingFile(backupFileName1);

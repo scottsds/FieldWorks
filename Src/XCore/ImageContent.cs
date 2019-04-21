@@ -1,19 +1,14 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ImageContent.cs
-// Responsibility:
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using System.Xml;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 
 namespace XCore
@@ -52,7 +47,7 @@ namespace XCore
 			CheckDisposed();
 
 			m_configurationParameters = configurationParameters;	// save for acc info
-			string path = XmlUtils.GetManditoryAttributeValue(configurationParameters, "imagePath");
+			string path = XmlUtils.GetMandatoryAttributeValue(configurationParameters, "imagePath");
 			 path = mediator.GetRealPath(path);
 			if (File.Exists(path))
 			{

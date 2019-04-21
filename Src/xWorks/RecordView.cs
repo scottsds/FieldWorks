@@ -13,11 +13,11 @@ using System;
 using System.IO;
 using System.Diagnostics;
 using System.Xml;
+using SIL.FieldWorks.Common.Framework;
 using SIL.FieldWorks.Common.FwUtils;
 using XCore;
+using SIL.LCModel;
 using SIL.Utils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.Framework;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -234,8 +234,8 @@ namespace SIL.FieldWorks.XWorks
 				SetTreebarAvailability();
 				AddPaneBar();
 
-				//Historical comments here indicated that the Clerk should be processed by the mediator before the
-				//view. This is handled by Priority now, RecordView is by default just after RecordClerk in the processing.
+				// Historical comments here indicated that the Clerk should be processed by the mediator before the
+				// view. This is handled by Priority now, RecordView is by default just after RecordClerk in the processing.
 				mediator.AddColleague(this);
 				SetupDataContext();
 				// Only if it was just now created should we try to restore from what we persisted.
@@ -257,13 +257,13 @@ namespace SIL.FieldWorks.XWorks
 			return GetSortFilePersistPathname(Cache, Clerk.Id);
 		}
 
-		internal static string GetSortFilePersistPathname(FdoCache cache, string clerkId)
+		internal static string GetSortFilePersistPathname(LcmCache cache, string clerkId)
 		{
 			var filename = clerkId + "_SortSeq";
 			//(This extension is also known to ProjectRestoreService.RestoreFrom7_0AndNewerBackup.)
 			// Also to FwXWindow.DiscardProperties().
 			var filenameWithExt = Path.ChangeExtension(filename, "fwss");
-			var tempDirectory = Path.Combine(cache.ProjectId.ProjectFolder, FdoFileHelper.ksSortSequenceTempDir);
+			var tempDirectory = Path.Combine(cache.ProjectId.ProjectFolder, LcmFileHelper.ksSortSequenceTempDir);
 			if (!Directory.Exists(tempDirectory))
 				Directory.CreateDirectory(tempDirectory);
 			return Path.Combine(tempDirectory, filenameWithExt);
@@ -373,7 +373,6 @@ namespace SIL.FieldWorks.XWorks
 			//
 			this.Name = "RecordView";
 			this.Size = new System.Drawing.Size(752, 150);
-
 		}
 		#endregion
 	}

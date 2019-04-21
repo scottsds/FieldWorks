@@ -4,25 +4,26 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.FDO.Application;
+using SIL.LCModel.Application;
 using SIL.FieldWorks.FwCoreDlgs;
 using XCore;
-using SIL.Utils;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Framework;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Common.FwUtils;
 using System.Drawing.Printing;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.FwCoreDlgControls;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -100,8 +101,6 @@ namespace SIL.FieldWorks.XWorks
 			return layoutList;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private static IEnumerable<Tuple<string, string>> GetBuiltInLayouts(XmlNode configNode)
 		{
 			var configLayouts = XmlUtils.FindNode(configNode, "configureLayouts");
@@ -510,8 +509,6 @@ namespace SIL.FieldWorks.XWorks
 			return true;	//we handled this.
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ToolStripMenuItem gets added to m_contextMenu.Items; ContextMenuStrip is disposed in DisposeContextMenu()")]
 		protected override void OnMouseClick(MouseEventArgs e)
 		{
 			if ((ModifierKeys & Keys.Control) == Keys.Control)
@@ -549,7 +546,7 @@ namespace SIL.FieldWorks.XWorks
 				else
 					label = string.Format(xWorksStrings.ksConfigureIn, nodePath.Split(':')[3], m_configObjectName);
 				var m_contextMenu = new ContextMenuStrip();
-				var item = new ToolStripMenuItem(label);
+				var item = new DisposableToolStripMenuItem(label);
 				m_contextMenu.Items.Add(item);
 				item.Click += RunConfigureDialogAt;
 				item.Tag = nodePath;
@@ -668,7 +665,7 @@ namespace SIL.FieldWorks.XWorks
 		/// Return an item of the specified class that is indicated by a click at the specified position,
 		/// but only if it is part of a different object also of that class.
 		/// </summary>
-		internal static ICmObject SubitemClicked(Point where, int clsid, SimpleRootSite view, FdoCache cache, ISortItemProvider sortItemProvider,
+		internal static ICmObject SubitemClicked(Point where, int clsid, SimpleRootSite view, LcmCache cache, ISortItemProvider sortItemProvider,
 			IPreferedTargetAdjuster adjuster)
 		{
 			var sel = view.GetSelectionAtPoint(where, false);
@@ -806,14 +803,6 @@ namespace SIL.FieldWorks.XWorks
 			base.ShowRecord();
 		}
 
-		private enum ExclusionReasonCode
-		{
-			NotExcluded,
-			NotInPublication,
-			ExcludedHeadword,
-			ExcludedMinorEntry
-		}
-
 		/// <summary>
 		/// Used to verify current content control so that Find Lexical Entry behaves differently
 		/// in Dictionary View.
@@ -832,7 +821,7 @@ namespace SIL.FieldWorks.XWorks
 			// Currently this (LT-11447) only applies to Dictionary view
 			if (hvoTarget > 0 && currControl == ksLexDictionary)
 			{
-				ExclusionReasonCode xrc;
+				DictionaryConfigurationController.ExclusionReasonCode xrc;
 				// Make sure we explain to the user in case hvoTarget is not visible due to
 				// the current Publication layout or Configuration view.
 				if (!IsObjectVisible(hvoTarget, out xrc))
@@ -844,9 +833,7 @@ namespace SIL.FieldWorks.XWorks
 			return true;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
-		private void GiveSimpleWarning(ExclusionReasonCode xrc)
+		private void GiveSimpleWarning(DictionaryConfigurationController.ExclusionReasonCode xrc)
 		{
 			// Tell the user why we aren't jumping to his record
 			var msg = xWorksStrings.ksSelectedEntryNotInDict;
@@ -855,17 +842,17 @@ namespace SIL.FieldWorks.XWorks
 			string shlpTopic;
 			switch (xrc)
 			{
-				case ExclusionReasonCode.NotInPublication:
+				case DictionaryConfigurationController.ExclusionReasonCode.NotInPublication:
 					caption = xWorksStrings.ksEntryNotPublished;
 					reason = xWorksStrings.ksEntryNotPublishedReason;
 					shlpTopic = "User_Interface/Menus/Edit/Find_a_lexical_entry.htm";		//khtpEntryNotPublished
 					break;
-				case ExclusionReasonCode.ExcludedHeadword:
+				case DictionaryConfigurationController.ExclusionReasonCode.ExcludedHeadword:
 					caption = xWorksStrings.ksMainNotShown;
 					reason = xWorksStrings.ksMainNotShownReason;
 					shlpTopic = "khtpMainEntryNotShown";
 					break;
-				case ExclusionReasonCode.ExcludedMinorEntry:
+				case DictionaryConfigurationController.ExclusionReasonCode.ExcludedMinorEntry:
 					caption = xWorksStrings.ksMinorNotShown;
 					reason = xWorksStrings.ksMinorNotShownReason;
 					shlpTopic = "khtpMinorEntryNotShown";
@@ -881,9 +868,9 @@ namespace SIL.FieldWorks.XWorks
 							HelpNavigator.Topic, shlpTopic);
 		}
 
-		private bool IsObjectVisible(int hvoTarget, out ExclusionReasonCode xrc)
+		private bool IsObjectVisible(int hvoTarget, out DictionaryConfigurationController.ExclusionReasonCode xrc)
 		{
-			xrc = ExclusionReasonCode.NotExcluded;
+			xrc = DictionaryConfigurationController.ExclusionReasonCode.NotExcluded;
 			var objRepo = Cache.ServiceLocator.GetInstance<ICmObjectRepository>();
 			Debug.Assert(objRepo.IsValidObjectId(hvoTarget), "Invalid hvoTarget!");
 			if (!objRepo.IsValidObjectId(hvoTarget))
@@ -900,13 +887,13 @@ namespace SIL.FieldWorks.XWorks
 				var currentPubPoss = Publication;
 				if (!entry.PublishIn.Contains(currentPubPoss))
 				{
-					xrc = ExclusionReasonCode.NotInPublication;
+					xrc = DictionaryConfigurationController.ExclusionReasonCode.NotInPublication;
 					return false;
 				}
 				// Second deal with whether the entry shouldn't be shown as a headword
 				if (!entry.ShowMainEntryIn.Contains(currentPubPoss))
 				{
-					xrc = ExclusionReasonCode.ExcludedHeadword;
+					xrc = DictionaryConfigurationController.ExclusionReasonCode.ExcludedHeadword;
 					return false;
 				}
 			}
@@ -914,7 +901,7 @@ namespace SIL.FieldWorks.XWorks
 			// commented out until conditions are clarified (LT-11447)
 			if (entry.EntryRefsOS.Count > 0 && !entry.PublishAsMinorEntry && IsRootBasedView)
 			{
-				xrc = ExclusionReasonCode.ExcludedMinorEntry;
+				xrc = DictionaryConfigurationController.ExclusionReasonCode.ExcludedMinorEntry;
 				return false;
 			}
 			// If we get here, we should be able to display it.
@@ -1139,12 +1126,12 @@ namespace SIL.FieldWorks.XWorks
 
 		protected override void SetupStylesheet()
 		{
-			FwStyleSheet ss = StyleSheet;
+			LcmStyleSheet ss = StyleSheet;
 			if (ss != null)
 				m_mainView.StyleSheet = ss;
 		}
 
-		private FwStyleSheet StyleSheet
+		private LcmStyleSheet StyleSheet
 		{
 			get
 			{

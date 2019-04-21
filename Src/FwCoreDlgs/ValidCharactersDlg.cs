@@ -1,4 +1,4 @@
-// Copyright (c) 2008-2013 SIL International
+// Copyright (c) 2008-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 //
@@ -9,30 +9,27 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
-using System.Media;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using Icu;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.ScriptureUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
 using SIL.FieldWorks.Resources;
 using SIL.Keyboarding;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 using SIL.Windows.Forms;
-using SILUBS.SharedScrUtils;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -55,7 +52,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			internal EventHandler CharacterGridSelectionChanged;
 
 			private CharacterGrid m_gridWordForming;
-			private CharacterGrid m_gridNumbers;
 			private CharacterGrid m_gridOther;
 			private CharacterGrid m_currGrid;
 
@@ -96,45 +92,36 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			/// Initializes the valid characters explorer bar with three valid character grids.
 			/// </summary>
 			/// ---------------------------------------------------------------------------------
-			internal void Init(CharacterGrid gridWf, CharacterGrid gridOther, CharacterGrid gridNum,
-				CoreWritingSystemDefinition ws, IApp app)
+			internal void Init(CharacterGrid gridWf, CharacterGrid gridOther, CoreWritingSystemDefinition ws, IApp app)
 			{
 				m_ws = ws;
 				m_app = app;
 
 				gridWf.Font = new Font(ws.DefaultFontName, gridWf.Font.Size);
-				gridNum.Font = new Font(ws.DefaultFontName, gridNum.Font.Size);
 				gridOther.Font = new Font(ws.DefaultFontName, gridOther.Font.Size);
 
 				gridWf.BackgroundColor = SystemColors.Window;
-				gridNum.BackgroundColor = SystemColors.Window;
 				gridOther.BackgroundColor = SystemColors.Window;
 
 				gridWf.MultiSelect = true;
-				gridNum.MultiSelect = true;
 				gridOther.MultiSelect = true;
 
 				gridWf.CellPainting += HandleGridCellPainting;
-				gridNum.CellPainting += HandleGridCellPainting;
 				gridOther.CellPainting += HandleGridCellPainting;
 
 				gridWf.Enter += HandleGridEnter;
-				gridNum.Enter += HandleGridEnter;
 				gridOther.Enter += HandleGridEnter;
 
 				gridWf.CellFormatting += HandleCellFormatting;
-				gridNum.CellFormatting += HandleCellFormatting;
 				gridOther.CellFormatting += HandleCellFormatting;
 
 				gridWf.CellMouseClick += HandleCharGridCellMouseClick;
-				gridNum.CellMouseClick += HandleCharGridCellMouseClick;
 				gridOther.CellMouseClick += HandleCharGridCellMouseClick;
 
 				gridWf.SelectionChanged += HandleCharGridSelectionChanged;
 				gridOther.SelectionChanged += HandleCharGridSelectionChanged;
 
 				m_gridWordForming = gridWf;
-				m_gridNumbers = gridNum;
 				m_gridOther = gridOther;
 				m_validChars = ValidCharacters.Load(ws, LoadException);
 
@@ -146,7 +133,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			/// <summary/>
 			~ValidCharGridsManager()
 			{
-				Debug.WriteLine("****** Missing Dispose() call for " + GetType() + " *******");
 				Dispose(false);
 			}
 			#endif
@@ -184,15 +170,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					m_gridWordForming.Dispose();
 				}
 
-				if (m_gridNumbers != null)
-				{
-					m_gridNumbers.CellPainting -= HandleGridCellPainting;
-					m_gridNumbers.Enter -= HandleGridEnter;
-					m_gridNumbers.CellFormatting -= HandleCellFormatting;
-					m_gridNumbers.CellMouseClick -= HandleCharGridCellMouseClick;
-					m_gridNumbers.Dispose();
-				}
-
 				if (m_gridOther != null)
 				{
 					m_gridOther.CellPainting -= HandleGridCellPainting;
@@ -210,7 +187,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 						m_cmnu.Dispose();
 				}
 				m_gridWordForming = null;
-				m_gridNumbers = null;
 				m_gridOther = null;
 					m_currGrid = null;
 				IsDisposed = true;
@@ -228,7 +204,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				get { return m_currGrid; }
 				set
 				{
-					if ((value == m_gridWordForming || value == m_gridNumbers ||
+					if ((value == m_gridWordForming ||
 						value == m_gridOther) && value != m_currGrid)
 					{
 						m_currGrid = value;
@@ -256,8 +232,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			{
 				get
 				{
-					return (m_gridWordForming.RowCount == 0 && m_gridNumbers.RowCount == 0 &&
-						m_gridOther.RowCount == 0);
+					return (m_gridWordForming.RowCount == 0 && m_gridOther.RowCount == 0);
 				}
 			}
 
@@ -300,7 +275,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			/// ---------------------------------------------------------------------------------
 			private bool AreSelectedCharsOther(CharacterGrid grid)
 			{
-				if (grid == null || grid == m_gridNumbers || grid.SelectedCells.Count == 0)
+				if (grid == null || grid.SelectedCells.Count == 0)
 					return false;
 
 				foreach (DataGridViewCell cell in grid.SelectedCells)
@@ -352,7 +327,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					switch (retType)
 					{
 						case ValidCharacterType.WordForming: CurrentGrid = m_gridWordForming; break;
-						case ValidCharacterType.Numeric: CurrentGrid = m_gridNumbers; break;
 						case ValidCharacterType.Other: CurrentGrid = m_gridOther; break;
 						default: return;
 					}
@@ -374,8 +348,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					if (m_gridWordForming.RowCount > 0)
 						CurrentGrid = m_gridWordForming;
-					else if (m_gridNumbers.RowCount > 0)
-						CurrentGrid = m_gridNumbers;
 					else if (m_gridOther.RowCount > 0)
 						CurrentGrid = m_gridOther;
 				}
@@ -404,12 +376,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					m_gridWordForming.RemoveAllCharacters();
 					m_gridWordForming.AddCharacters(m_validChars.WordFormingCharacters);
-				}
-
-				if ((type & ValidCharacterType.Numeric) != 0)
-				{
-					m_gridNumbers.RemoveAllCharacters();
-					m_gridNumbers.AddCharacters(m_validChars.NumericCharacters);
 				}
 
 				if ((type & ValidCharacterType.Other) != 0)
@@ -575,8 +541,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			/// Handles the click on one of the "Treat as..." context menu items.
 			/// </summary>
 			/// ---------------------------------------------------------------------------------
-			[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-				Justification="MoveSelectedChars() returns a reference.")]
 			private void HandleTreatAsClick(object sender, EventArgs e)
 			{
 				MoveSelectedChars();
@@ -627,7 +591,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 		#region Data members
 		private readonly CoreWritingSystemDefinition m_ws;
-		private ILgCharacterPropertyEngine m_chrPropEng;
 		private readonly IHelpTopicProvider m_helpTopicProvider;
 		private readonly IApp m_app;
 		private Font m_fntForSpecialChar;
@@ -678,8 +641,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			AccessibleName = GetType().Name;
 
 			m_openFileDialog = new OpenFileDialogAdapter();
-			m_openFileDialog.DefaultExt = "lds";
-			m_openFileDialog.InitialDirectory = ParatextHelper.ProjectsDirectory;
+			m_openFileDialog.InitialDirectory = ScriptureProvider.SettingsDirectory; // to import from language files from Paratext or Toolbox
 			m_openFileDialog.Title = FwCoreDlgs.kstidLanguageFileBrowser;
 
 			splitContainerOuter.Panel2MinSize = splitValidCharsOuter.Left +
@@ -712,9 +674,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <param name="wsName">The name of the writing system for which this dialog is setting
 		/// the valid characters. Can not be <c>null</c> or <c>String.Empty</c>.</param>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "gridcol is a reference")]
-		public ValidCharactersDlg(FdoCache cache, IWritingSystemContainer wsContainer,
+		public ValidCharactersDlg(LcmCache cache, IWritingSystemContainer wsContainer,
 			IHelpTopicProvider helpTopicProvider, IApp app, CoreWritingSystemDefinition ws, string wsName) : this()
 		{
 			m_ws = ws;
@@ -725,8 +685,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 			if (cache != null)
 				m_wsManager = cache.ServiceLocator.WritingSystemManager;
-
-			m_chrPropEng = LgIcuCharPropEngineClass.Create();
 
 			m_lblWsName.Text = string.Format(m_lblWsName.Text, wsName);
 
@@ -740,7 +698,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			// to be executed which is an expensive operation as it pinvokes GetGlyphIndices
 			// repeatedly.
 			chrGridWordForming.Font = fnt;
-			chrGridNumbers.Font = fnt;
 			chrGridOther.Font = fnt;
 			txtManualCharEntry.Font = fnt;
 			txtFirstChar.Font = fnt;
@@ -771,7 +728,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 			colStatus.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
 
-			m_validCharsGridMngr.Init(chrGridWordForming, chrGridOther, chrGridNumbers, m_ws, m_app);
+			m_validCharsGridMngr.Init(chrGridWordForming, chrGridOther, m_ws, m_app);
 			m_validCharsGridMngr.CharacterGridGotFocus += HandleCharGridGotFocus;
 			m_validCharsGridMngr.CharacterGridSelectionChanged += HandleCharGridSelChange;
 		}
@@ -799,11 +756,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					m_validCharsGridMngr.Dispose();
 				if (m_chkBoxColHdrHandler != null)
 					m_chkBoxColHdrHandler.Dispose();
-				if (m_chrPropEng != null && Marshal.IsComObject(m_chrPropEng))
-				{
-					Marshal.ReleaseComObject(m_chrPropEng);
-					m_chrPropEng = null;
-				}
 				if (m_openFileDialog != null)
 					m_openFileDialog.Dispose();
 				if (components != null)
@@ -836,7 +788,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// Display the valid characters dialog box. Return true if OK was chosen.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		public static bool RunDialog(FdoCache cache, IApp app, IWin32Window owner, IHelpTopicProvider helpTopicProvider)
+		public static bool RunDialog(LcmCache cache, IApp app, IWin32Window owner, IHelpTopicProvider helpTopicProvider)
 		{
 			CoreWritingSystemDefinition ws = cache.ServiceLocator.WritingSystems.DefaultVernacularWritingSystem;
 
@@ -904,7 +856,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		{
 			// Unsubs
 			chrGridWordForming.CharacterChanged -= HandleCharGridCharacterChanged;
-			chrGridNumbers.CharacterChanged -= HandleCharGridCharacterChanged;
 			chrGridOther.CharacterChanged -= HandleCharGridCharacterChanged;
 			base.OnClosing(e);
 		}
@@ -933,14 +884,11 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			btnRemoveChar.Enabled = !string.IsNullOrEmpty(m_validCharsGridMngr.CurrentCharacter);
 		}
 
-		/// ------------------------------------------------------------------------------------
-		/// <summary>
-		/// Handles the Click event of the btnBrowseLangFile control.
-		/// </summary>
-		/// <param name="sender">The source of the event.</param>
-		/// <param name="e">The <see cref="T:System.EventArgs"/> instance containing the event
-		/// data.</param>
-		/// ------------------------------------------------------------------------------------
+		/// <remarks>
+		/// REVIEW (Hasso) 2017.07: this button and most other controls in the Based On tab are apparently never visible. If we want to maintain the
+		/// import functionality from Paratext and Toolbox, we should make these controls viewable--although it seems that functionality
+		/// has moved to the From Data tab (see CharContextControl). (REVIEW) so it is likely safe to remove these invisible controls entirely.
+		/// </remarks>
 		private void btnBrowseLangFile_Click(object sender, EventArgs e)
 		{
 			string paratext = ResourceHelper.GetResourceString("kstidParatextLanguageFiles");
@@ -1061,7 +1009,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 				if (txt == txtManualCharEntry)
 				{
-					chr = m_chrPropEng.NormalizeD(txtManualCharEntry.Text);
+					chr = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(txtManualCharEntry.Text);
 					fClearText = true;
 				}
 				else
@@ -1071,7 +1019,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					if (int.TryParse(txt.Text, NumberStyles.HexNumber, null, out codepoint))
 					{
 						chr = ((char) codepoint).ToString(CultureInfo.InvariantCulture);
-						if (m_chrPropEng.get_IsMark(chr[0]))
+						if (Character.IsMark(chr[0]))
 						{
 							ShowMessageBox(FwCoreDlgs.kstidLoneDiacriticNotValid);
 							return;
@@ -1129,7 +1077,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					try
 					{
 						if (!string.IsNullOrEmpty(chr))
-						chr = m_chrPropEng.NormalizeD(chr);
+						chr = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(chr);
 					}
 					catch
 					{
@@ -1249,14 +1197,14 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		{
 			if (txtManualCharEntry.Text.Length > 0)
 			{
-				string origCharsKd = m_chrPropEng.NormalizeD(txtManualCharEntry.Text);
+				string origCharsKd = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(txtManualCharEntry.Text);
 				int savSelStart = txtManualCharEntry.SelectionStart;
-				string newChars = TsStringUtils.ValidateCharacterSequence(origCharsKd, m_chrPropEng);
+				string newChars = TsStringUtils.ValidateCharacterSequence(origCharsKd);
 
 				if (newChars.Length == 0)
 				{
 					string s = origCharsKd.Trim();
-					if (s.Length > 0 && m_chrPropEng.get_IsMark(s[0]))
+					if (s.Length > 0 && Character.IsMark(s[0]))
 						ShowMessageBox(FwCoreDlgs.kstidLoneDiacriticNotValid);
 					else
 						IssueBeep();
@@ -1305,10 +1253,12 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// ------------------------------------------------------------------------------------
 		private void VerifyCharInRange(FwTextBox textbox, Label lbl)
 		{
-			string txt = textbox.Text.Length >= 1 ? m_chrPropEng.NormalizeD(textbox.Text) : String.Empty;
+			string txt = textbox.Text.Length >= 1
+				? CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(textbox.Text)
+				: string.Empty;
 			int chrCode = (txt.Length >= 1 ? txt[0] : 0);
 
-			if (txt.Length > 1 || (chrCode > 0 && m_chrPropEng.get_IsMark(chrCode)))
+			if (txt.Length > 1 || (chrCode > 0 && Character.IsMark(chrCode)))
 			{
 				IssueBeep();
 				lbl.ForeColor = Color.Red;
@@ -1337,10 +1287,10 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				return;
 
 			var chars = new List<string>();
-			foreach (string c in UnicodeSet.ToCharacters(Common.COMInterfaces.Icu.GetExemplarCharacters(icuLocale)))
+			foreach (string c in UnicodeSet.ToCharacters(CustomIcu.GetExemplarCharacters(icuLocale)))
 			{
 				chars.Add(c.Normalize(NormalizationForm.FormD));
-				chars.Add(Common.COMInterfaces.Icu.ToUpper(c, icuLocale).Normalize(NormalizationForm.FormD));
+				chars.Add(UnicodeString.ToUpper(c, icuLocale).Normalize(NormalizationForm.FormD));
 			}
 			m_validCharsGridMngr.AddCharacters(chars);
 		}
@@ -1575,7 +1525,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					case kiCharCol:
 						string chr = m_inventoryRows[i].Character;
-						if (!Common.COMInterfaces.Icu.IsSpace(chr[0]) && !Common.COMInterfaces.Icu.IsControl(chr[0]))
+						if (!Character.IsSpace(chr[0]) && !Character.IsControl(chr[0]))
 						{
 							e.Value = chr;
 							gridCharInventory[e.ColumnIndex, e.RowIndex].Tag = null;
@@ -1603,8 +1553,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <param name="sender">The source of the event.</param>
 		/// <param name="e">The <see cref="T:System.Windows.Forms.DataGridViewCellFormattingEventArgs"/> instance containing the event data.</param>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "cell is a reference")]
 		private void gridCharInventory_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
 		{
 			DataGridViewCell cell = gridCharInventory[e.ColumnIndex, e.RowIndex];
@@ -1786,9 +1734,9 @@ namespace SIL.FieldWorks.FwCoreDlgs
 					string chr;
 					if (!normalizedChars.TryGetValue(txtTokSub.Text, out chr))
 					{
-						chr = m_chrPropEng.NormalizeD(txtTokSub.Text);
+						chr = CustomIcu.GetIcuNormalizer(FwNormalizationMode.knmNFD).Normalize(txtTokSub.Text);
 						if (chr == "\n" || chr == "\r" || !TsStringUtils.IsCharacterDefined(chr)
-							|| !TsStringUtils.IsValidChar(chr, m_chrPropEng))
+							|| !TsStringUtils.IsValidChar(chr))
 						{
 							chr = string.Empty;
 						}
@@ -1959,7 +1907,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// ------------------------------------------------------------------------------------
 		protected virtual void IssueBeep()
 		{
-			SystemSounds.Beep.Play();
+			FwUtils.ErrorBeep();
 		}
 
 		/// ------------------------------------------------------------------------------------

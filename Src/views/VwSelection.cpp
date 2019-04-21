@@ -25,7 +25,7 @@ DEFINE_THIS_FILE
 using namespace std;
 
 enum CharacterType { kSpace, kPunc, kAlpha };
-static CharacterType GetCharacterType(ILgCharacterPropertyEngine * pcpe, OLECHAR chw);
+static CharacterType GetCharacterType(ILgWritingSystem * pws, OLECHAR chw);
 
 //:>********************************************************************************************
 //:>	Forward declarations
@@ -101,7 +101,7 @@ STDMETHODIMP VwSelection::QueryInterface(REFIID riid, void ** ppv)
 	return NOERROR;
 }
 
-void GetCpeFromRootAndProps(VwRootBox * prootb, ITsTextProps * pttp, ILgCharacterPropertyEngine ** ppcpe)
+void GetWsFromRootAndProps(VwRootBox * prootb, ITsTextProps * pttp, ILgWritingSystem ** ppws)
 {
 	ILgWritingSystemFactoryPtr qwsf;
 	CheckHr(prootb->GetDataAccess()->get_WritingSystemFactory(&qwsf));
@@ -109,13 +109,11 @@ void GetCpeFromRootAndProps(VwRootBox * prootb, ITsTextProps * pttp, ILgCharacte
 	{
 		int ws, tmp;
 		CheckHr(pttp->GetIntPropValues(ktptWs, &tmp, &ws));
-		CheckHr(qwsf->get_CharPropEngine(ws, ppcpe));
+		CheckHr(qwsf->get_EngineOrNull(ws, ppws));
 	}
 	else
 	{
-		ILgCharacterPropertyEnginePtr qcpe;
-		qcpe.CreateInstance(CLSID_LgIcuCharPropEngine);
-		*ppcpe = qcpe.Detach();
+		*ppws = NULL;
 	}
 }
 /*----------------------------------------------------------------------------------------------
@@ -618,7 +616,7 @@ void VwSelection::DoCtrlPageUpDown(IVwGraphics * pvg, Rect rcDocumentCoord, Rect
 
 
 	Rect rcRootSite;
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 	if(!GetClientRect(hwndRootSite, &rcRootSite)){
 		Assert(false); // we better have a valid HWND at this point! That's the only reason GetClientRect should fail that we could think of.
 		return;
@@ -683,7 +681,7 @@ COMINT32 VwSelection::VisiblePageHeight(IVwGraphics * pvg, Rect rcDocumentCoord,
 	Assert(hwndRootSite);
 
 	Rect rcRootSite;
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 	if(!GetClientRect(hwndRootSite, &rcRootSite)){
 		Assert(false); // we better have a valid HWND at this point! That's the only reason GetClientRect should fail that we could think of.
 		return 0;
@@ -963,7 +961,7 @@ void VwSelection::InvalidateSel()
 	// Fudge a little, since PositionsOfIP is not guaranteed to give an exact result.
 	// Note: these fudge values cause clipping rectangle to be too large for lineheight
 	// causing FWNX-456, and extra width not needed for linux either
-#if WIN32
+#if defined(WIN32) || defined(WIN64)
 	rdPrimary.left -= 3;
 	rdPrimary.right += 3;
 	rdPrimary.top -= 3;
@@ -973,7 +971,7 @@ void VwSelection::InvalidateSel()
 		rdPrimary.Height()));
 	if (fSplit && !rdSecondary.IsEmpty())
 	{
-#if WIN32
+#if defined(WIN32) || defined(WIN64)
 		rdSecondary.left -= 3;
 		rdSecondary.right += 3;
 		rdSecondary.top -= 3;
@@ -1737,7 +1735,7 @@ STDMETHODIMP VwTextSelection::GetParaProps(int cttpMax, IVwPropertyStore ** prgp
 		for (ppvps = prgpvps; ppvps < ppvpsLim; ppvps++)
 			(*ppvps)->AddRef();
 	}
-	*pcttp = ppvps - prgpvps;
+	*pcttp = (int)(ppvps - prgpvps);
 	END_COM_METHOD(g_fact, IID_IVwSelection);
 }
 
@@ -3656,11 +3654,11 @@ public:
 	int m_ichEnd;
 	VwSelChangeType m_nHowChanged;
 	VwShiftStatus m_ss;
-	ILgCharacterPropertyEnginePtr m_qcpe; // default ICU CPE; use only where wordforming overrides are not important.
 
 	OnTypingMethod(VwTextSelection * psel, IVwGraphics * pvg, const wchar * pchInput,
 		int cchInput, VwShiftStatus ss, int * pwsPending)
 	{
+		m_ichAnchor = m_ichEnd = 0;
 		m_qsel = psel;
 		m_pvg = pvg;
 		m_ss = ss;
@@ -3698,7 +3696,6 @@ public:
 		m_chFirst = pchInput[0]; // don't use m_pchInput; has BS and DEL removed. Want original first.
 		m_pwsPending = pwsPending;
 		m_fSelectionHidden = false;
-		m_qcpe.CreateInstance(CLSID_LgIcuCharPropEngine);
 	}
 
 	~OnTypingMethod()
@@ -3813,10 +3810,10 @@ public:
 		int cchTemp = pts->Cch();
 		OLECHAR *rgch = new OLECHAR[ cchTemp + 1];
 		pts->FetchLog(0, pts->Cch(), rgch);
-		ILgCharacterPropertyEnginePtr qcpeStart;
+		ILgWritingSystemPtr qwsStart;
 		ITsTextPropsPtr qttpStart;
 		m_qsel->m_pvpbox->Source()->CharAndPropsAt(m_qsel->m_ichEnd, &startCh, &qttpStart);
-		GetCpeFromRootAndProps(m_prootb, qttpStart, &qcpeStart);
+		GetWsFromRootAndProps(m_prootb, qttpStart, &qwsStart);
 
 		if (m_cchBackspace == 1)
 		{
@@ -3834,14 +3831,14 @@ public:
 				// range we are about to delete, or there is nothing after and one is found before.
 				// Also if punct is found after.
 				// We already got the character at m_qsel->m_ichEnd, which is the one after.
-				if (ichEnd > 0 && (m_qsel->m_ichEnd >= cchTemp || GetCharacterType(qcpeStart, startCh) != kAlpha))
+				if (ichEnd > 0 && (m_qsel->m_ichEnd >= cchTemp || GetCharacterType(qwsStart, startCh) != kAlpha))
 				{
 					// Got a space after...and there is a character before...
-					ILgCharacterPropertyEnginePtr qcpeEnd;
+					ILgWritingSystemPtr qwsEnd;
 					ITsTextPropsPtr qttpEnd;
 					m_qsel->m_pvpbox->Source()->CharAndPropsAt(ichEnd - 1, &endCh, &qttpEnd);
-					GetCpeFromRootAndProps(m_prootb, qttpEnd, &qcpeEnd);
-					if(GetCharacterType(qcpeEnd, endCh) == kSpace)
+					GetWsFromRootAndProps(m_prootb, qttpEnd, &qwsEnd);
+					if(GetCharacterType(qwsEnd, endCh) == kSpace)
 					{
 						--ichEnd; // delete the preceding space
 					}
@@ -3876,12 +3873,12 @@ public:
 				if (ichEnd < m_qsel->m_pvpbox->Source()->Cch())
 				{
 					// Consider deleting one more space. Only if a space does in fact follow the range we intend to delete.
-					ILgCharacterPropertyEnginePtr qcpeFollow;
+					ILgWritingSystemPtr qwsFollow;
 					ITsTextPropsPtr qttpFollow;
 					OLECHAR chFollow;
 					m_qsel->m_pvpbox->Source()->CharAndPropsAt(ichEnd, &chFollow, &qttpFollow);
-					GetCpeFromRootAndProps(m_prootb, qttpFollow, &qcpeFollow);
-					if (GetCharacterType(qcpeFollow, chFollow) == kSpace)
+					GetWsFromRootAndProps(m_prootb, qttpFollow, &qwsFollow);
+					if (GetCharacterType(qwsFollow, chFollow) == kSpace)
 					{
 						// OK, conceivably we want to delete the space following the word.
 						// But only if the bit we're deleting is at the start of the paragraph or preceded by space;
@@ -3890,12 +3887,12 @@ public:
 							++ichEnd;
 						else
 						{
-							ILgCharacterPropertyEnginePtr qcpeEnd;
+							ILgWritingSystemPtr qwsEnd;
 							ITsTextPropsPtr qttpEnd;
 							m_qsel->m_pvpbox->Source()->CharAndPropsAt(m_qsel->m_ichEnd - 1, &endCh, &qttpEnd);
-							GetCpeFromRootAndProps(m_prootb, qttpEnd, &qcpeEnd);
-							if( m_qsel->m_ichEnd > 0 && GetCharacterType(qcpeStart, startCh) == kAlpha &&
-								GetCharacterType(qcpeEnd, endCh) == kSpace)
+							GetWsFromRootAndProps(m_prootb, qttpEnd, &qwsEnd);
+							if( m_qsel->m_ichEnd > 0 && GetCharacterType(qwsStart, startCh) == kAlpha &&
+								GetCharacterType(qwsEnd, endCh) == kSpace)
 							{
 								++ichEnd;
 							}
@@ -4201,9 +4198,7 @@ public:
 			else
 				uch32 = (unsigned)prgch[ich];
 
-			LgGeneralCharCategory gcc;
-			CheckHr(m_qcpe->get_GeneralCategory(uch32, &gcc));
-			if (gcc >= kccMn && gcc <= kccMe && ich > ichMin)
+			if (StrUtil::IsMark(uch32) && ich > ichMin)
 			{
 				++cchMark;
 				if (ichLim < cchProp)
@@ -4478,12 +4473,13 @@ public:
 			// data, allow them to be inserted as ordinary data.
 			for (pch = m_pchInput; pch < m_pchInput + m_cchInput && *pch >= 32; pch++)
 				;
-			int cchIns = pch - m_pchInput;
+			int cchIns = (int)(pch - m_pchInput);
 			if (cchIns)
 			{
+				StrUni stuInput(m_pchInput, cchIns);
 				CheckHr(m_qsel->m_qtsbProp->ReplaceRgch(
 					m_ichAnchor - m_qsel->m_ichMinEditProp,
-					m_ichAnchor - m_qsel->m_ichMinEditProp, m_pchInput, cchIns, qttp));
+					m_ichAnchor - m_qsel->m_ichMinEditProp, stuInput.Bstr(), cchIns, qttp));
 				m_ichAnchor += cchIns;
 				m_ichEnd += cchIns;
 				m_cchInput -= cchIns;
@@ -4492,7 +4488,7 @@ public:
 			}
 			for (; pch < m_pchInput + m_cchInput && *pch == '\r'; pch++)
 				;
-			cchIns = pch - m_pchInput;
+			cchIns = (int)(pch - m_pchInput);
 			// If we got cr's and if we have a property where we can edit at para level,
 			// insert paragraphs. Otherwise just ignore them.
 			if (cchIns)
@@ -4595,7 +4591,7 @@ public:
 			// something with them.)
 			for (; pch < m_pchInput + m_cchInput && *pch < 32 && *pch != '\r'; pch++)
 				;
-			cchIns = pch - m_pchInput;
+			cchIns = (int)(pch - m_pchInput);
 			m_cchInput -= cchIns;
 			m_pchInput += cchIns;
 		}
@@ -4707,7 +4703,7 @@ public:
 			// Ignore any problems; we can't recover cleanly in this situation, and there
 			// should be no need; we don't have cases of parsing multi-paragraph texts.
 			m_prootb->DestroySelection();
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 			::MessageBeep(MB_OK); // ENHANCE JohnT (Mac portability).
 #else
 			// TODO-Linux: implement MessageBeep method to remove this ifndef
@@ -5764,7 +5760,7 @@ STDMETHODIMP VwTextSelection::ReplaceWithTsString(ITsString * ptss)
 				bool fOk;
 				UnprotectedCommit(&fOk);
 // See FWNX-447 - mono doesn't currently support arrays of COM objects native -> managed.
-#ifndef WIN32
+#if !defined(_WIN32) && !defined(_M_X64)
 				if (vpttpPara.Size() == 1)
 				{
 					CheckHr(prootb->Site()->OnInsertDiffPara(prootb, qttpOrig,
@@ -6079,6 +6075,7 @@ private:
 public:
 	GetSelectionStringMethod(VwTextSelection * pvwsel, BSTR bstrNonText, bool fWholeSelection)
 	{
+		m_pvpboxLast = nullptr;
 		m_pvwsel = pvwsel;
 		m_bstrNonText = bstrNonText;
 		m_fWholeSelection = fWholeSelection;
@@ -6140,7 +6137,7 @@ public:
 	ComBool Run(ITsString ** pptss)
 	{
 		ITsStrFactoryPtr qtsf;
-		qtsf.CreateInstance(CLSID_TsStrFactory);
+		CheckHr(m_pvwsel->m_pvpbox->Root()->get_TsStrFactory(&qtsf));
 		CheckHr(qtsf->GetBldr(&m_qtsb));
 
 		if (m_pvwsel->IsInsertionPoint())
@@ -6378,8 +6375,8 @@ protected:
 				vch.Resize(ichLimRen - ichMinRen);
 				pts->Fetch(ichMinRen, ichLimRen, vch.Begin());
 				cchRun = ichLimRen - ichMinRen;
-
-				CheckHr(m_qtsb->ReplaceRgch(m_ichSel, m_ichSel, vch.Begin(), cchRun, qttp));
+				StrUni bstRun(vch.Begin(), cchRun);
+				CheckHr(m_qtsb->ReplaceRgch(m_ichSel, m_ichSel, bstRun.Bstr(), cchRun, qttp));
 				m_ichSel += cchRun;
 			}
 			ichNew = ichMinTss + tri.ichLim;
@@ -6920,10 +6917,11 @@ STDMETHODIMP VwTextSelection::get_CanFormatChar(ComBool * pfRet)
 	for (int ittp = 0; ittp < cttp; ittp++)
 	{
 		HRESULT hr = S_FALSE;
+		nvar = -1;
 		ITsTextProps * pttp = vqttp[ittp];
 		if (pttp)
 			CheckHr(hr = pttp->GetIntPropValues(ktptEditable, &nvar, &nval));
-		if (hr == S_FALSE)
+		if (hr == S_FALSE || nvar == -1)
 			CheckHr(vqvps[ittp]->get_IntProperty(ktptEditable, &nval));
 		if ((nval == ktptNotEditable) || (nval == ktptSemiEditable))
 		{
@@ -7406,7 +7404,7 @@ void VwTextSelection::DoUpdateProp(VwRootBox * prootb, HVO hvo, PropTag tag, VwN
 				CheckHr(qsda->get_UnicodeProp(hvo, tag, &sbstrOld));
 				SmartBstr sbstrNew;
 				CheckHr(qtssNewSub->get_Text(&sbstrNew));
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 				if (wcscmp(sbstrOld.Chars(), sbstrNew.Chars()) != 0)
 #else
 				if (u_strcmp(sbstrOld.Chars(), sbstrNew.Chars()) != 0)
@@ -7438,7 +7436,7 @@ void VwTextSelection::DoUpdateProp(VwRootBox * prootb, HVO hvo, PropTag tag, VwN
 				wcsncpy_s(buf, 50, pch, cch);
 
 				buf[49] = 0; // in case there really were 50 + chars
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 				nVal = _wtoi(buf);
 #else
 				{
@@ -10545,21 +10543,25 @@ int VwTextSelection::ForwardOneChar(int ichLogIP, VwParagraphBox * pvpboxIP, boo
 	@param pcpe
 	@param chw
 ----------------------------------------------------------------------------------------------*/
-static CharacterType GetCharacterType(ILgCharacterPropertyEngine * pcpe, OLECHAR chw)
+static CharacterType GetCharacterType(ILgWritingSystem * pws, OLECHAR chw)
 {
-	ComBool fIsSeparator;
-	CheckHr(pcpe->get_IsSeparator(chw, &fIsSeparator));
-	if (fIsSeparator)
+	if (StrUtil::IsSeparator(chw))
 		return kSpace;
 
-	ComBool fIsLetter;
-	CheckHr(pcpe->get_IsWordForming(chw, &fIsLetter));
-	if (fIsLetter)
-		return kAlpha;
+	if (pws)
+	{
+		ComBool fIsLetter;
+		CheckHr(pws->get_IsWordForming(chw, &fIsLetter));
+		if (fIsLetter)
+			return kAlpha;
+	}
+	else
+	{
+		if (StrUtil::IsWordForming(chw))
+			return kAlpha;
+	}
 
-	ComBool fIsNumber;
-	CheckHr(pcpe->get_IsNumber(chw, &fIsNumber));
-	return fIsNumber ? kAlpha : kPunc;
+	return StrUtil::IsNumber(chw) ? kAlpha : kPunc;
 }
 
 /*----------------------------------------------------------------------------------------------
@@ -10609,15 +10611,11 @@ int VwTextSelection::ForwardOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVw
 		ITsTextProps * pttpInitial = NULL;
 		OLECHAR ch;
 		pts->CharAndPropsAt(ichMin, &ch, &pttpInitial);
-		// This CPE will do for almost all purposes, at least until we enhance the algorithm to
-		// allow a 'word' to contain characters with different properties. When we encounter
-		// differnt properties, we immediately set state kFinal. After that, we can only toggle
-		// between states kFinal and kWantNonSpace, both of which only test characters for being
-		// spaces. Currently, which WS a CPE belongs to makes no difference to its answers
-		// to whether a character is space.
-		// The one exception is looking ahead for another alpha on the other side of a single quote.
-		ILgCharacterPropertyEnginePtr qcpe;
-		GetCpeFromRootAndProps(m_qrootb, pttpInitial, &qcpe);
+		// When we encounter different properties, we immediately set state kFinal. After that, we
+		// can only toggle between states kFinal and kWantNonSpace, both of which only test
+		// characters for being spaces.
+		ILgWritingSystemPtr qws;
+		GetWsFromRootAndProps(m_qrootb, pttpInitial, &qws);
 
 		for (cch = pts->Cch(); ichMin < cch; ichMin = ichLim)
 		{
@@ -10636,7 +10634,7 @@ int VwTextSelection::ForwardOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVw
 					state = kFinal;
 					fPropsChanged = true; // at run boundary
 				}
-				chtype = GetCharacterType(qcpe, rgch[ich - ichMin]);
+				chtype = GetCharacterType(qws, rgch[ich - ichMin]);
 				switch (state)
 				{
 				case kInitial:
@@ -10685,11 +10683,9 @@ int VwTextSelection::ForwardOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVw
 								ITsTextProps * pttpFollow = NULL;
 								OLECHAR chFollow;
 								pts->CharAndPropsAt(ich2, &chFollow, &pttpFollow);
-								// To properly test the following charcter, technically we must try it with
-								// its own CPE.
-								ILgCharacterPropertyEnginePtr qcpeFollow;
-								GetCpeFromRootAndProps(m_qrootb, pttpFollow, &qcpeFollow);
-								chtype = GetCharacterType(qcpeFollow, chFollow);
+								ILgWritingSystemPtr qwsFollow;
+								GetWsFromRootAndProps(m_qrootb, pttpFollow, &qwsFollow);
+								chtype = GetCharacterType(qwsFollow, chFollow);
 								if (chtype == kAlpha)
 									break;
 							}
@@ -11136,7 +11132,7 @@ int VwTextSelection::FindWordBoundary(int ichLogIP, VwParagraphBox * pvpboxIP,
 	AssertPtr(pvg);
 	Assert(ichLogIP >= 0);
 
-	ILgCharacterPropertyEnginePtr qcpe;
+	ILgWritingSystemPtr qws;
 
 	VwTxtSrc * pts = pvpboxIP->Source();
 	AssertPtr(pts);
@@ -11189,8 +11185,8 @@ int VwTextSelection::FindWordBoundary(int ichLogIP, VwParagraphBox * pvpboxIP,
 		CheckHr(qtss->get_Properties(irun, &qttpCurr));
 		int tmp, ws;
 		CheckHr(qttpCurr->GetIntPropValues(ktptWs, &tmp, &ws));
-		GetCpeFromRootAndProps(m_qrootb, qttpCurr, &qcpe);
-		chtype = GetCharacterType(qcpe, ch);
+		GetWsFromRootAndProps(m_qrootb, qttpCurr, &qws);
+		chtype = GetCharacterType(qws, ch);
 
 		if (chtype == kAlpha)
 			fFoundAlpha = true;
@@ -11367,7 +11363,7 @@ int VwTextSelection::BackOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVwGra
 		// initial props until we have moved back the first character.
 		ITsTextProps * pttpInitial = NULL;
 
-		ILgCharacterPropertyEnginePtr qcpe;
+		ILgWritingSystemPtr qws;
 		while (ichMin < ichLim)
 		{
 			pts->FetchLog(ichMin, ichLim, rgch);
@@ -11388,7 +11384,7 @@ int VwTextSelection::BackOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVwGra
 					// at any change of properties. To be more consistent with spelling and double-click
 					// code, it should ignore changes in properties other than writing system and editability
 					// (and spell-checkability).
-					GetCpeFromRootAndProps(m_qrootb, pttpInitial, &qcpe);
+					GetWsFromRootAndProps(m_qrootb, pttpInitial, &qws);
 				}
 				else
 				{
@@ -11399,7 +11395,7 @@ int VwTextSelection::BackOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVwGra
 						fPropsChanged = true; // character is at run boundary
 					}
 				}
-				chtype = GetCharacterType(qcpe, ch);
+				chtype = GetCharacterType(qws, ch);
 
 				switch (state)
 				{
@@ -11449,11 +11445,9 @@ int VwTextSelection::BackOneWord(int ichLogIP, VwParagraphBox * pvpboxIP, IVwGra
 								ITsTextProps * pttpPrev = NULL;
 								OLECHAR chPrev;
 								pts->CharAndPropsAt(ich2, &chPrev, &pttpPrev);
-								// To properly test the preceding charcter, technically we must try it with
-								// its own CPE.
-								ILgCharacterPropertyEnginePtr qcpePrev;
-								GetCpeFromRootAndProps(m_qrootb, pttpPrev, &qcpePrev);
-								chtype = GetCharacterType(qcpePrev, chPrev);
+								ILgWritingSystemPtr qwsPrev;
+								GetWsFromRootAndProps(m_qrootb, pttpPrev, &qwsPrev);
+								chtype = GetCharacterType(qwsPrev, chPrev);
 								if (chtype == kAlpha)
 									break;
 							}
@@ -12381,7 +12375,7 @@ bool PropsDiffer(ITsTextProps * pttp1, ITsTextProps * pttp2, int ttp)
 
 // Answer true if the text props differ in a way which should prevent the associated characters from
 // being considered part of the same word.
-bool PropsIndicateWordBreak(ITsTextProps * pttp1, ITsTextProps * pttp2,IVwStylesheet * psty)
+bool PropsIndicateWordBreak(ITsTextProps * pttp1, ITsTextProps * pttp2, IVwStylesheet * psty)
 {
 	if (pttp1 == pttp2)
 		return false; // most common case, no change.
@@ -12408,9 +12402,6 @@ bool PropsIndicateWordBreak(ITsTextProps * pttp1, ITsTextProps * pttp2,IVwStyles
 	if (sbstrStyle2.Length())
 		CheckHr(psty->GetStyleRgch(sbstrStyle2.Length(), sbstrStyle2.Bstr(), &qttp2));
 	return PropsIndicateWordBreak(qttp1, qttp2, NULL);
-	// What on earth should we do if one style means something and the other doesn't??
-	// Simplest just to treat as no significant difference, I think.
-	return false;
 }
 
 void VwTextSelection::FindWordBoundaries(int & ichMinWord, int & ichLimWord)
@@ -12453,12 +12444,11 @@ void VwTextSelection::FindWordBoundaries(int & ichMinWord, int & ichLimWord)
 		psrc->CharAndPropsAt(ichLimWord, &ch, &qttpCurrent);
 		if (PropsIndicateWordBreak(qttpCurrent, qttpStart, psty))
 			break;
-		ILgCharacterPropertyEnginePtr qcpe;
-		GetCpeFromRootAndProps(m_qrootb, qttpCurrent, &qcpe);
-		ComBool isDigit;
-		CheckHr(qcpe->get_IsNumber(ch, &isDigit));
+		ILgWritingSystemPtr qws;
+		GetWsFromRootAndProps(m_qrootb, qttpCurrent, &qws);
+		bool isDigit = StrUtil::IsNumber(ch);
 		ComBool isWordForming;
-		CheckHr(qcpe->get_IsWordForming(ch, &isWordForming));
+		CheckHr(qws->get_IsWordForming(ch, &isWordForming));
 		if (!isWordForming && !isDigit)
 			break;
 		ichLimWord++;
@@ -12471,12 +12461,11 @@ void VwTextSelection::FindWordBoundaries(int & ichMinWord, int & ichLimWord)
 		psrc->CharAndPropsAt(ichMinWord - 1, &ch, &qttpCurrent);
 		if (PropsIndicateWordBreak(qttpCurrent, qttpStart, psty))
 			break;
-		ILgCharacterPropertyEnginePtr qcpe;
-		GetCpeFromRootAndProps(m_qrootb, qttpCurrent, &qcpe);
-		ComBool isDigit;
-		qcpe->get_IsNumber(ch, &isDigit);
+		ILgWritingSystemPtr qws;
+		GetWsFromRootAndProps(m_qrootb, qttpCurrent, &qws);
+		bool isDigit = StrUtil::IsNumber(ch);
 		ComBool isWordForming;
-		qcpe->get_IsWordForming(ch, &isWordForming);
+		qws->get_IsWordForming(ch, &isWordForming);
 		if (!isWordForming && !isDigit)
 			break;
 		ichMinWord--;
@@ -13114,13 +13103,19 @@ void VwTextSelection::GetHardAndSoftPropsOneRun(ITsTextProps * pttp,
 	CheckHr(hr = pttp->GetStrPropValue(ktptNamedStyle, &sbstrNamedStyle));
 	if (hr == S_OK)
 	{
-		// (Seems okay to just slap the character style on top of the ws/ows in the
-		// same builder.)
-		ITsTextPropsPtr qttpCharStyle;
-		CheckHr(qtpb->SetStrPropValue(ktptNamedStyle, sbstrNamedStyle));
-		CheckHr(qtpb->GetTextProps(&qttpCharStyle));
+		if (!sbstrNamedStyle) {
+			*ppvpsRet = qvpsTmp.Detach();
+		}
+		else
+		{
+			// (Seems okay to just slap the character style on top of the ws/ows in the
+			// same builder.)
+			ITsTextPropsPtr qttpCharStyle;
+			CheckHr(qtpb->SetStrPropValue(ktptNamedStyle, sbstrNamedStyle));
+			CheckHr(qtpb->GetTextProps(&qttpCharStyle));
 
-		CheckHr(qvpsTmp->get_DerivedPropertiesForTtp(qttpCharStyle, ppvpsRet));
+			CheckHr(qvpsTmp->get_DerivedPropertiesForTtp(qttpCharStyle, ppvpsRet));
+		}
 	}
 	else {
 		if (hr == S_FALSE) {
@@ -13173,10 +13168,6 @@ STDMETHODIMP VwTextSelection::GetHardAndSoftParaProps(int cttpMax, ITsTextProps 
 		SmartBstr sbstrEmpty;
 		CheckHr(qtpbHard->SetStrPropValue(ktptNamedStyle, sbstrEmpty));
 		CheckHr(qtpbHard->GetTextProps(prgpttpHard + ittp));
-
-		byte rgb[1000];  // TODO: delete
-		int cb;
-		prgpttpHard[ittp]->SerializeRgb(rgb, 1000, &cb);
 
 		// Apply the named style to the parent, which gives the soft formatting.
 		ITsPropsBldrPtr qtpbStyle;

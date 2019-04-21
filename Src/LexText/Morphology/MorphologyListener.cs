@@ -1,31 +1,26 @@
-// Copyright (c) 2005-2013 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: MorphologyListener.cs
-// Responsibility: Randy Regnier
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.SpellChecking;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.Framework;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FdoUi;
 using SIL.FieldWorks.IText;
 using SIL.Utils;
-using SIL.WritingSystems;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks.MorphologyEditor
@@ -36,7 +31,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 	/// to tools in the Words area.
 	/// </summary>
 	[XCore.MediatorDispose]
-	public class MorphologyListener : IxCoreColleague, IVwNotifyChange, IFWDisposable
+	public class MorphologyListener : IxCoreColleague, IVwNotifyChange, IDisposable
 	{
 		#region Data members
 
@@ -184,7 +179,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
 			m_mediator.AddColleague(this);
-			Cache = m_propertyTable.GetValue<FdoCache>("cache");
+			Cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_wordformRepos = Cache.ServiceLocator.GetInstance<IWfiWordformRepository>();
 			Cache.DomainDataByFlid.AddNotification(this);
 			if (IsVernacularSpellingEnabled())
@@ -304,7 +299,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			return true; // handled
 		}
 
-		private FdoCache Cache { get; set; }
+		private LcmCache Cache { get; set; }
 
 		/// <summary>
 		/// Enable vernacular spelling.
@@ -314,7 +309,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			// Enable all vernacular spelling dictionaries by changing those that are set to <None>
 			// to point to the appropriate Locale ID. Do this BEFORE updating the spelling dictionaries,
 			// otherwise, the update won't see that there is any dictionary set to update.
-			FdoCache cache = Cache;
+			LcmCache cache = Cache;
 			foreach (CoreWritingSystemDefinition wsObj in cache.ServiceLocator.WritingSystems.CurrentVernacularWritingSystems)
 			{
 				// This allows it to try to find a dictionary, but doesn't force one to exist.
@@ -354,7 +349,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// If successful return its guid, otherwise, return Guid.Empty.
 		/// </summary>
 		/// <returns></returns>
-		internal static Guid ActiveWordform(FdoCache cache, PropertyTable propertyTable)
+		internal static Guid ActiveWordform(LcmCache cache, PropertyTable propertyTable)
 		{
 			IApp app = propertyTable.GetValue<IApp>("App");
 			if (app == null)
@@ -475,7 +470,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			var command = (Command)commandObject;
 			if (command.TargetId != Guid.Empty)
 			{
-				var tool = XmlUtils.GetManditoryAttributeValue(command.Parameters[0], "tool");
+				var tool = XmlUtils.GetMandatoryAttributeValue(command.Parameters[0], "tool");
 				m_mediator.PostMessage("FollowLink", new FwLinkArgs(tool, command.TargetId));
 				command.TargetId = Guid.Empty;	// clear the target for future use.
 				return true;
@@ -513,8 +508,6 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// Returns the object of the current slice, or (if no slice is marked current)
 		/// the object of the first slice, or (if there are no slices, or no data entry form) null.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FieldAt() returns a reference")]
 		private ICmObject CurrentSliceObject
 		{
 			get
@@ -730,7 +723,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		public virtual bool OnDisplayJumpToTool(object commandObject, ref UIItemDisplayProperties display)
 		{
 			var cmd = (Command)commandObject;
-			var className = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "className");
+			var className = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "className");
 			var specifiedClsid = 0;
 			if ((Cache.MetaDataCacheAccessor as IFwMetaDataCacheManaged).ClassExists(className))
 				specifiedClsid = Cache.MetaDataCacheAccessor.GetClassId(className);
@@ -764,7 +757,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		public virtual bool OnJumpToTool(object commandObject)
 		{
 			var cmd = (Command)commandObject;
-			var className = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "className");
+			var className = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "className");
 			var guid = Guid.Empty;
 			switch (className)
 			{
@@ -783,7 +776,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 			}
 			if (guid != Guid.Empty)
 			{
-				var tool = XmlUtils.GetManditoryAttributeValue(cmd.Parameters[0], "tool");
+				var tool = XmlUtils.GetMandatoryAttributeValue(cmd.Parameters[0], "tool");
 				m_mediator.PostMessage("FollowLink", new FwLinkArgs(tool, guid));
 				return true;
 			}
@@ -1058,13 +1051,13 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 								Wordform.AnalysesOC.Add(newAnalysis);
 								newAnalysis.ApprovalStatusIcon = 1; // Make it human approved.
 								int vernWS = TsStringUtils.GetWsAtOffset(tssWord, 0);
-								foreach (string morph in fullForm.Split(SIL.Utils.Unicode.SpaceChars))
+								foreach (string morph in fullForm.Split(Common.FwUtils.Unicode.SpaceChars))
 								{
-									if (morph != null && morph.Length != 0)
+									if (!string.IsNullOrEmpty(morph))
 									{
 										IWfiMorphBundle mb = cache.ServiceLocator.GetInstance<IWfiMorphBundleFactory>().Create();
 										newAnalysis.MorphBundlesOS.Add(mb);
-										mb.Form.set_String(vernWS, Cache.TsStrFactory.MakeString(morph, vernWS));
+										mb.Form.set_String(vernWS, TsStringUtils.MakeString(morph, vernWS));
 									}
 								}
 							});

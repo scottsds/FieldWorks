@@ -1,26 +1,29 @@
-// Copyright (c) 2003-2015 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainServices;
 using SIL.FieldWorks.Filters;
 using SIL.FieldWorks.Resources;
 using SIL.Reporting;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 using SIL.Utils;
 using XCore;
 
@@ -185,7 +188,7 @@ namespace SIL.FieldWorks.Common.Controls
 		}
 
 		private readonly DisposableObjectsSet<RecordSorter> m_SortersToDispose = new DisposableObjectsSet<RecordSorter>();
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private XmlNode m_nodeSpec;
 		/// <summary/>
 		protected DhListView m_lvHeader;
@@ -454,7 +457,7 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 		}
 
-		internal FdoCache Cache
+		internal LcmCache Cache
 		{
 			get
 			{
@@ -677,8 +680,7 @@ namespace SIL.FieldWorks.Common.Controls
 			get
 			{
 				CheckDisposed();
-				if (m_sorter is IFWDisposable && ((IFWDisposable)m_sorter).IsDisposed)
-					m_sorter = null;
+
 				return m_sorter;
 			}
 			set
@@ -858,7 +860,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
 		public BrowseViewer(XmlNode nodeSpec, int hvoRoot, int fakeFlid,
-			FdoCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider, ISilDataAccessManaged sda)
+			LcmCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider, ISilDataAccessManaged sda)
 		{
 			ContructorSurrogate(nodeSpec, hvoRoot, fakeFlid, cache, mediator, propertyTable, sortItemProvider, sda);
 		}
@@ -875,7 +877,7 @@ namespace SIL.FieldWorks.Common.Controls
 			= new Dictionary<Tuple<XmlNode, int>, Tuple<Dictionary<int, int>, bool>>();
 
 		internal void ContructorSurrogate(XmlNode nodeSpec, int hvoRoot, int fakeFlid,
-			FdoCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider, ISilDataAccessManaged sda)
+			LcmCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider, ISilDataAccessManaged sda)
 		{
 			CheckDisposed();
 
@@ -925,11 +927,14 @@ namespace SIL.FieldWorks.Common.Controls
 			m_lvHeader.Size = new Size(4000, 22);
 			m_lvHeader.TabIndex = 0;
 			m_lvHeader.View = View.Details;
-#if __MonoCS__	// FWNX-224
-			m_lvHeader.ColumnLeftClick += m_lvHeader_ColumnLeftClick;
-#else
-			m_lvHeader.ColumnClick += m_lvHeader_ColumnLeftClick;
-#endif
+			if (Platform.IsMono)
+			{
+				// FWNX-224
+				m_lvHeader.ColumnLeftClick += m_lvHeader_ColumnLeftClick;
+			}
+			else
+				m_lvHeader.ColumnClick += m_lvHeader_ColumnLeftClick;
+
 			m_lvHeader.ColumnRightClick += m_lvHeader_ColumnRightClick;
 			m_lvHeader.ColumnDragDropReordered += m_lvHeader_ColumnDragDropReordered;
 			m_lvHeader.AllowColumnReorder = true;
@@ -1090,7 +1095,7 @@ namespace SIL.FieldWorks.Common.Controls
 			if (m_modifiedColumn != null)
 			{
 				XmlUtils.SetAttribute(m_modifiedColumn, "layout",
-									  XmlUtils.GetManditoryAttributeValue(m_modifiedColumn, "normalLayout"));
+									  XmlUtils.GetMandatoryAttributeValue(m_modifiedColumn, "normalLayout"));
 				m_modifiedColumn = null;
 				e.ForceReload = true;
 			}
@@ -1131,7 +1136,7 @@ namespace SIL.FieldWorks.Common.Controls
 			if (!m_fIsInitialized)
 				return;
 			m_lastChangedSelectionListItemsClass = (int) m_xbv.Vc.ListItemsClass;
-			SaveSelectionItems(new Set<int>(selectionItemsToSave));
+			SaveSelectionItems(new HashSet<int>(selectionItemsToSave));
 		}
 
 		/// <summary>
@@ -1143,7 +1148,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="propertyTable"></param>
 		/// <param name="cache"></param>
 		/// <returns></returns>
-		protected virtual BulkEditBar CreateBulkEditBar(BrowseViewer bv, XmlNode spec, Mediator mediator, PropertyTable propertyTable, FdoCache cache)
+		protected virtual BulkEditBar CreateBulkEditBar(BrowseViewer bv, XmlNode spec, Mediator mediator, PropertyTable propertyTable, LcmCache cache)
 		{
 			return new BulkEditBar(bv, spec, mediator, propertyTable, cache);
 		}
@@ -1349,7 +1354,7 @@ namespace SIL.FieldWorks.Common.Controls
 		private void SaveAllSelectionItems()
 		{
 			// save the latest selection state.
-			SaveSelectionItems(new Set<int>(AllItems));
+			SaveSelectionItems(new HashSet<int>(AllItems));
 		}
 
 		/// <summary>
@@ -1357,7 +1362,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// <param name="itemsToSaveSelectionState">items that need to be saved,
 		/// especially those that the user has changed in selection status</param>
-		private void SaveSelectionItems(Set<int> itemsToSaveSelectionState)
+		private void SaveSelectionItems(HashSet<int> itemsToSaveSelectionState)
 		{
 			if (m_xbv.Vc.HasSelectColumn && BulkEditBar != null && m_sortItemProvider is IMultiListSortItemProvider)
 			{
@@ -1428,7 +1433,7 @@ namespace SIL.FieldWorks.Common.Controls
 		private void RemoveInvalidOldSelectedItems(ref IDictionary<int, object> items, bool fExpectToBeSelected)
 		{
 			var objRepo = Cache.ServiceLocator.ObjectRepository;
-			Set<int> invalidSelectedItems = new Set<int>();
+			var invalidSelectedItems = new HashSet<int>();
 			foreach (KeyValuePair<int, object> item in items)
 			{
 				// LTB-1650 - test if item still exists:
@@ -1517,11 +1522,14 @@ namespace SIL.FieldWorks.Common.Controls
 				{
 					if (m_lvHeader != null)
 					{
-#if __MonoCS__	// FWNX-224
-						m_lvHeader.ColumnLeftClick -= m_lvHeader_ColumnLeftClick;
-#else
-						m_lvHeader.ColumnClick -= m_lvHeader_ColumnLeftClick;
-#endif
+						if (Platform.IsMono)
+						{
+							// FWNX-224
+							m_lvHeader.ColumnLeftClick -= m_lvHeader_ColumnLeftClick;
+						}
+						else
+							m_lvHeader.ColumnClick -= m_lvHeader_ColumnLeftClick;
+
 						m_lvHeader.ColumnRightClick -= m_lvHeader_ColumnRightClick;
 						m_lvHeader.ColumnDragDropReordered -= m_lvHeader_ColumnDragDropReordered;
 						if (!m_scrollContainer.Controls.Contains(m_lvHeader))
@@ -1654,9 +1662,11 @@ namespace SIL.FieldWorks.Common.Controls
 			if (Width != m_lastLayoutWidth && m_lastLayoutWidth != 0)
 				AdjustControls();
 
-#if __MonoCS__ // FWNX-425
-			EnsureScrollContainerIsCorrectWidth();
-#endif
+			if (Platform.IsMono)
+			{
+				// FWNX-425
+				EnsureScrollContainerIsCorrectWidth();
+			}
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -1894,35 +1904,56 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 
 			internal OneColumnXmlBrowseView(BrowseViewer bv, int icolLvHeaderToAdd)
-				: this(bv.m_nodeSpec, bv.RootObjectHvo, bv.MainTag, bv.Cache, bv.Mediator, bv.PropTable, bv.StyleSheet, bv)
+				: this(bv.m_nodeSpec, bv.RootObjectHvo, bv.MainTag, bv.Cache, bv.Mediator, bv.PropTable, bv.StyleSheet, bv, icolLvHeaderToAdd)
 			{
-				// add only the specified column to this browseview.
-				(Vc as OneColumnXmlBrowseViewVc).SetupOneColumnSpec(bv, icolLvHeaderToAdd);
+
 			}
 
-			private OneColumnXmlBrowseView(XmlNode nodeSpec, int hvoRoot, int mainTag, FdoCache cache, Mediator mediator, PropertyTable propertyTable,
-				IVwStylesheet styleSheet, BrowseViewer bv)
+			private OneColumnXmlBrowseView(XmlNode nodeSpec, int hvoRoot, int mainTag, LcmCache cache, Mediator mediator, PropertyTable propertyTable,
+				IVwStylesheet styleSheet, BrowseViewer bv, int icolLvHeaderToAdd)
 			{
 				base.Init(mediator, propertyTable, nodeSpec);
 				base.Init(nodeSpec, hvoRoot, mainTag, cache, mediator, bv);
+				m_styleSheet = styleSheet;
+
+				// add only the specified column to this browseview.
+				(Vc as OneColumnXmlBrowseViewVc).SetupOneColumnSpec(bv, icolLvHeaderToAdd);
+
+				MakeRoot();
 				// note: bv was used to initialize SortItemProvider. But we don't need it after init so null it out.
 				m_bv = null;
-
-				m_styleSheet = styleSheet;
-				MakeRoot();
 			}
 
 			public override void MakeRoot()
 			{
 				CheckDisposed();
 
-				m_rootb = VwRootBoxClass.Create();
-				m_rootb.SetSite(this);
+				base.MakeRoot();
+
 				ReadOnlyView = ReadOnlySelect;
 				Vc.Cache = Cache;
 				m_rootb.SetRootObject(m_hvoRoot, Vc, (int)XmlBrowseViewVc.kfragRoot, m_styleSheet);
-				m_rootb.DataAccess = m_fdoCache.MainCacheAccessor;
+				m_rootb.DataAccess = m_cache.MainCacheAccessor;
 				m_dxdLayoutWidth = kForceLayout; // Don't try to draw until we get OnSize and do layout.
+			}
+
+			/// <summary>
+			/// No resources need to be cleaned up specific to the OneColumnBrowseView and we need to override
+			/// so we don't try to dispose content owned by the BrowseViewer that we are constructed with.
+			/// </summary>
+			protected override void Dispose(bool disposing)
+			{
+
+			}
+
+			public override Point ScrollPosition
+			{
+				get
+				{
+					CheckDisposed();
+					return base.ScrollPosition;
+				}
+				set { }
 			}
 
 			/// <summary>
@@ -2048,7 +2079,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		internal void AdjustColumnWidthToMatchContents(int icolLvHeaderToAdjust)
 		{
-			if (m_xbv.Vc.HasSelectColumn && icolLvHeaderToAdjust == 0)
+			if (m_xbv.RowCount == 0 || m_xbv.Vc.HasSelectColumn && icolLvHeaderToAdjust == 0)
 				return; // don't auto-size a select column.
 
 			// by default '0' will not change the size of the column.
@@ -2453,7 +2484,7 @@ namespace SIL.FieldWorks.Common.Controls
 					continue;
 
 				string label = XmlUtils.GetLocalizedAttributeValue( node, "label", null) ??
-							   XmlUtils.GetManditoryAttributeValue(node, "label");
+							   XmlUtils.GetMandatoryAttributeValue(node, "label");
 				MenuItem mi = new MenuItem(label, ConfigItemClicked);
 
 				// tick the checkbox for items that match something in current visible list.
@@ -2600,8 +2631,6 @@ namespace SIL.FieldWorks.Common.Controls
 			m_scrollContainer.PerformLayout();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="ch gets added to Columns collection and disposed there")]
 		private void RebuildHeaderColumns(List<XmlNode> colSpecs, Dictionary<XmlNode, int> widths)
 		{
 			m_lvHeader.BeginUpdate();
@@ -2683,8 +2712,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="args"></param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "menu is a reference")]
 		private void ConfigItemClicked(object sender, EventArgs args)
 		{
 			// If we have changes we need to commit, do it before we mess up the column sequence.
@@ -2922,8 +2949,8 @@ namespace SIL.FieldWorks.Common.Controls
 		}
 
 		// Note: often we also want to update LayoutCache.LayoutVersionNumber.
-		// (last updated by JohnT, March 12, 2013, for 7.3 beta release)
-		internal const int kBrowseViewVersion = 16;
+		// (last updated by Jason Naylor, Nov 16, 2016, for ExtendedNote Bulk editing)
+		internal const int kBrowseViewVersion = 18;
 
 		/// <summary>
 		/// Column has been added or removed, update all child windows.
@@ -3809,7 +3836,7 @@ namespace SIL.FieldWorks.Common.Controls
 	/// <summary>
 	/// This class manages the parts of the BrowseViewer that scroll horizontally in sync.
 	/// </summary>
-	public class BrowseViewScroller : UserControl, IFWDisposable
+	public class BrowseViewScroller : UserControl
 	{
 		BrowseViewer m_bv;
 
@@ -3827,9 +3854,8 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="levent"></param>
 		protected override void OnLayout(LayoutEventArgs levent)
 		{
-#if __MonoCS__ // FWNX-425
-			m_bv.EnsureScrollContainerIsCorrectWidth();
-#endif
+			if (Platform.IsMono)
+				m_bv.EnsureScrollContainerIsCorrectWidth(); // FWNX-425
 
 			m_bv.LayoutScrollControls();
 			// It's important to do this AFTER laying out the embedded controls, because it figures
@@ -3837,17 +3863,15 @@ namespace SIL.FieldWorks.Common.Controls
 			base.OnLayout (levent);
 		}
 
-#if __MonoCS__ // FWNX-425
-#pragma warning disable 1587
-		/// <summary> </summary>
-#pragma warning restore 1587
+		/// <summary/>
 		protected override void OnSizeChanged(EventArgs e)
 		{
-			m_bv.EnsureScrollContainerIsCorrectWidth();
+			if (Platform.IsMono)
+				m_bv.EnsureScrollContainerIsCorrectWidth(); // FWNX-425
 
 			base.OnSizeChanged(e);
 		}
-#endif
+
 		/// <summary>
 		///
 		/// </summary>
@@ -3895,7 +3919,7 @@ namespace SIL.FieldWorks.Common.Controls
 	/// It is intended to be used in a using() construct, so that its Dispose() forces a RootBox.Reconstruct()
 	/// at the end of the using block and then makes sure the scroll position is valid.
 	/// </summary>
-	internal class ReconstructPreservingBVScrollPosition : IFWDisposable
+	internal class ReconstructPreservingBVScrollPosition : IDisposable
 	{
 		BrowseViewer m_bv;
 		int m_irow;
@@ -4084,7 +4108,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
 		public BrowseActiveViewer(XmlNode nodeSpec, int hvoRoot, int fakeFlid,
-								  FdoCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider,
+								  LcmCache cache, Mediator mediator, PropertyTable propertyTable, ISortItemProvider sortItemProvider,
 								  ISilDataAccessManaged sda)
 			: base(nodeSpec, hvoRoot, fakeFlid, cache, mediator, propertyTable, sortItemProvider, sda)
 		{
@@ -4175,13 +4199,13 @@ namespace SIL.FieldWorks.Common.Controls
 			ICmObject obj = Cache.ServiceLocator.GetInstance<ICmObjectRepository>().GetObject(hvoItem);
 			switch (obj.ClassID)
 			{
-				case FDO.PhRegularRuleTags.kClassId: // fall through
-				case FDO.PhMetathesisRuleTags.kClassId:
-					fDisabled = SpecialCache.get_BooleanProp(hvoItem, FDO.PhSegmentRuleTags.kflidDisabled);
+				case PhRegularRuleTags.kClassId: // fall through
+				case PhMetathesisRuleTags.kClassId:
+					fDisabled = SpecialCache.get_BooleanProp(hvoItem, PhSegmentRuleTags.kflidDisabled);
 					break;
-				case FDO.MoEndoCompoundTags.kClassId: // fall through
-				case FDO.MoExoCompoundTags.kClassId:
-					fDisabled = SpecialCache.get_BooleanProp(hvoItem, FDO.MoCompoundRuleTags.kflidDisabled);
+				case MoEndoCompoundTags.kClassId: // fall through
+				case MoExoCompoundTags.kClassId:
+					fDisabled = SpecialCache.get_BooleanProp(hvoItem, MoCompoundRuleTags.kflidDisabled);
 					break;
 			}
 			return (fDisabled ? 0 : 1);
@@ -4250,7 +4274,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="cvDel"></param>
 		public void PropChanged(int hvo, int tag, int ivMin, int cvIns, int cvDel)
 		{
-			if (tag == FDO.PhSegmentRuleTags.kflidDisabled || tag == FDO.MoCompoundRuleTags.kflidDisabled)
+			if (tag == PhSegmentRuleTags.kflidDisabled || tag == MoCompoundRuleTags.kflidDisabled)
 			{
 				int currentValue = GetCheckState(hvo);
 				SetItemCheckedState(hvo, currentValue, false);

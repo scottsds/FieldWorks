@@ -2,19 +2,19 @@
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework.DetailControls;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
 using XCore;
 using System;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -41,8 +41,6 @@ namespace SIL.FieldWorks.XWorks
 		{
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="treeBarControl is a reference")]
 		internal override void Init(Mediator mediator, PropertyTable propertyTable, XmlNode node)
 		{
 			base.Init(mediator, propertyTable, node);
@@ -59,8 +57,6 @@ namespace SIL.FieldWorks.XWorks
 			m_listView.HeaderStyle = ColumnHeaderStyle.None; // We don't want a secondary "Records" title bar
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="PaneBar and Panel get added to controls collection and disposed there")]
 		private void SetupAndShowHeaderPanel(XmlNode node, RecordBar treeBarControl)
 		{
 			if (!treeBarControl.HasHeaderControl)
@@ -133,7 +129,7 @@ namespace SIL.FieldWorks.XWorks
 				// We could just ignore whitespace, but if <Enter> gets in there, somehow it makes the
 				// rest of the string invisible on the screen. So this special case is handled by resetting
 				// the search string to empty if it only contains whitespace.
-				m_textSearch.Tss = m_cache.TsStrFactory.MakeString(string.Empty, m_cache.DefaultAnalWs);
+				m_textSearch.Tss = TsStringUtils.EmptyString(m_cache.DefaultAnalWs);
 			}
 			return searchString.Trim();
 		}

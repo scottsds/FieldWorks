@@ -1,17 +1,13 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: Commands.cs
-// Authorship History: John Hatton
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
-
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.Reporting;
 using SIL.Utils;
@@ -21,9 +17,7 @@ namespace XCore
 	/// <summary>
 	/// Summary description for Commands.
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Correctness", "DisposableFieldsShouldBeDisposedRule",
-		Justification = "variable is a reference; it is owned by parent")]
-	public class CommandSet : Hashtable, IFWDisposable
+	public class CommandSet : Hashtable, IDisposable
 	{
 		protected Mediator m_mediator;
 		/// -----------------------------------------------------------------------------------
@@ -135,8 +129,6 @@ namespace XCore
 
 		#endregion IDisposable & Co. implementation
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "command is added to collection and disposed there")]
 		public void Init(XmlNode windowNode)
 		{
 			CheckDisposed();
@@ -149,7 +141,7 @@ namespace XCore
 		}
 	}
 
-	//!!!!!!!!!!!!!!!!!1
+	//!!!!!!!!!!!!!!!!!
 	//listSets objects are currently unused, as we are just accessing the raw XML for now.
 	//I have not figured out whether this raw approach will last once we have dynamic lists
 	//randy, now please resist the temptation to delete this stuff
@@ -214,9 +206,7 @@ namespace XCore
 		string RedoText { get; }
 	}
 
-	[SuppressMessage("Gendarme.Rules.Correctness", "DisposableFieldsShouldBeDisposedRule",
-		Justification = "variable is a reference; it is owned by parent")]
-	public class Command : IFWDisposable, ICommandUndoRedoText
+	public class Command : IDisposable, ICommandUndoRedoText
 	{
 		#region Fields
 		protected Mediator m_mediator;
@@ -229,7 +219,7 @@ namespace XCore
 		protected string m_valueString;
 		protected string m_messageString;
 		private bool m_oneAtATime;	// true if only one instance of a given command can run at a time
-		private static Set<string> m_OneAtATimeSet = new Set<string>();	// set of current commands that are 'oneatatime'
+		private static HashSet<string> m_OneAtATimeSet = new HashSet<string>();	// set of current commands that are 'oneatatime'
 		// add the ability to trace (dynamically) flow of commands through the system
 		private TraceSwitch m_traceCMDSwitch = new TraceSwitch("Command.Trace", "Flow of each command", "Off");
 
@@ -695,7 +685,7 @@ namespace XCore
 		/// Get a value of a mandatory attribute of a <parameters> element
 		/// </summary>
 		/// <param name="attributeName">the name of the attribute</param>
-		/// <exception cref="ConfigurationException">in the parameter is not found</exception>
+		/// <exception cref="System.Configuration.ConfigurationException">in the parameter is not found</exception>
 		/// <returns></returns>
 		///<remarks> this version assumes the element containing attribute is named "parameters"</remarks>
 		public string GetParameter(string attributeName)

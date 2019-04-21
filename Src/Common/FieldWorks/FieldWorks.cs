@@ -1,15 +1,12 @@
-// Copyright (c) 2010-2015 SIL International
+// Copyright (c) 2010-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: FieldWorks.cs
-// Responsibility: FW team
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -25,46 +22,35 @@ using System.Threading;
 using System.Windows.Forms;
 using Gecko;
 using Microsoft.Win32;
-using SIL.CoreImpl;
-using SIL.CoreImpl.Properties;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.Framework;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.ScriptureUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.DomainServices.BackupRestore;
-using SIL.FieldWorks.FDO.DomainServices.DataMigration;
-using SIL.FieldWorks.FDO.Infrastructure;
 using SIL.FieldWorks.FdoUi;
 using SIL.FieldWorks.FwCoreDlgs;
 using SIL.FieldWorks.FwCoreDlgs.BackupRestore;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices.BackupRestore;
+using SIL.LCModel.DomainServices.DataMigration;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexicalProvider;
 using SIL.FieldWorks.PaObjects;
 using SIL.FieldWorks.Resources;
 using SIL.FieldWorks.XWorks;
-using SIL.IO;
+using SIL.Keyboarding;
 using SIL.Reporting;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 using SIL.Utils;
 using SIL.Windows.Forms.HtmlBrowser;
 using SIL.Windows.Forms.Keyboarding;
 using SIL.WritingSystems;
 using XCore;
-using ConfigurationException = SIL.Utils.ConfigurationException;
-using FileUtils = SIL.Utils.FileUtils;
-
-
-#if __MonoCS__
-using SIL.Keyboarding;
-#else
-using NetSparkle;
-#endif
-
-[assembly:SuppressMessage("Gendarme.Rules.Portability", "ExitCodeIsLimitedOnUnixRule",
-	Justification="Gendarme bug? We only return values >= 0")]
+using ConfigurationException = SIL.Reporting.ConfigurationException;
 
 namespace SIL.FieldWorks
 {
@@ -112,7 +98,7 @@ namespace SIL.FieldWorks
 		private static bool s_renameSuccessful;
 		private static string s_renameNewName;
 		private static IFieldWorksManager s_fwManager;
-		private static FdoCache s_cache;
+		private static LcmCache s_cache;
 		private static string s_sWsUser;
 		private static FwRegistrySettings s_settingsForLastClosedWindow;
 		private static FwApp s_flexApp;
@@ -122,53 +108,20 @@ namespace SIL.FieldWorks
 		private static bool s_noUserInterface;
 		private static bool s_appServerMode;
 		private static string s_LinkDirChangedTo;
-		private static TcpChannel s_serviceChannel = null;
+		private static TcpChannel s_serviceChannel;
 		private static int s_servicePort;
 		// true if we have no previous reporting settings, typically the first time a version of FLEx that
 		// supports usage reporting has been run.
 		private static bool s_noPreviousReportingSettings;
-		private static IFdoUI s_ui;
+		private static ILcmUI s_ui;
+		private static FwApplicationSettings s_appSettings;
 		#endregion
 
 		#region Main Method and Initialization Methods
-#if !__MonoCS__
+
 		/// <summary></summary>
 		[DllImport("kernel32.dll")]
-		public extern static IntPtr LoadLibrary(string fileName);
-#endif
-
-		[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		static extern bool SetDllDirectory(string lpPathName);
-
-		/// <summary>
-		/// Sets the ICU_DATA environment variable.
-		/// </summary>
-		private static void SetIcuDataDirEnvironmentVariable()
-		{
-			if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ICU_DATA")))
-				return;
-
-			// We read the registry value and set an environment variable ICU_DATA here so that
-			// COMInterfaces.dll is independent of WinForms.
-			string icuDirValueName = string.Format("Icu{0}DataDir", Icu.Version);
-			using(var userKey = RegistryHelper.CompanyKey)
-			using(var machineKey = RegistryHelper.CompanyKeyLocalMachine)
-			{
-				string dir = null;
-				if (userKey != null && userKey.GetValue(icuDirValueName) != null)
-				{
-					dir = userKey.GetValue(icuDirValueName, dir) as string;
-				}
-				else if (machineKey != null && machineKey.GetValue(icuDirValueName) != null)
-				{
-
-					dir = machineKey.GetValue(icuDirValueName, dir) as string;
-				}
-				if (!string.IsNullOrEmpty(dir))
-					Environment.SetEnvironmentVariable("ICU_DATA", dir);
-			}
-		}
+		public static extern IntPtr LoadLibrary(string fileName);
 
 		/// ----------------------------------------------------------------------------
 		/// <summary>
@@ -176,62 +129,44 @@ namespace SIL.FieldWorks
 		/// </summary>
 		/// <param name="rgArgs">The command line arguments.</param>
 		/// ----------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "See TODO-Linux")]
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="open GeckoWebBrowser is disposed by Xpcom.Shutdown")]
 		[STAThread]
 		static int Main(string[] rgArgs)
 		{
 			Thread.CurrentThread.Name = "Main thread";
 			Logger.Init(FwUtils.ksSuiteName);
-			FdoCache.NewerWritingSystemFound += ComplainToUserAboutNewWs;
-			// Note to developers: Uncomment this line to be able to attach the debugger to a process for a project
-			// other than the initial one that gets started up in VS:
-			//MessageBox.Show("Attach debugger now");
+
+			Icu.Wrapper.ConfineIcuVersions(54);
+			Icu.Wrapper.Init();
+			LcmCache.NewerWritingSystemFound += ComplainToUserAboutNewWs;
+			FwRegistryHelper.Initialize();
+
 			try
 			{
 #region Initialize XULRunner - required to use the geckofx WebBrowser Control (GeckoWebBrowser).
-				string xulRunnerLocation;
-				if (MiscUtils.IsUnix)
+				var exePath = Path.GetDirectoryName(Application.ExecutablePath);
+				var firefoxPath = Environment.GetEnvironmentVariable("XULRUNNER");
+				if (string.IsNullOrEmpty(firefoxPath))
 				{
-					xulRunnerLocation = XULRunnerLocator.GetXULRunnerLocation();
-					if (String.IsNullOrEmpty(xulRunnerLocation))
-					throw new ApplicationException("The XULRunner library is missing or has the wrong version");
-				var librarySearchPath = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? String.Empty;
-				if (!librarySearchPath.Contains(xulRunnerLocation))
-					throw new ApplicationException("LD_LIBRARY_PATH must contain " + xulRunnerLocation);
+					firefoxPath = Path.Combine(exePath, "Firefox");
 				}
-				else
-				{
-				// LT-16559: Specifying a hint path is necessary on Windows, but causes a crash in Xpcom.Initialize on Linux. Go figure.
-					xulRunnerLocation = XULRunnerLocator.GetXULRunnerLocation("xulrunner");
-				if (string.IsNullOrEmpty(xulRunnerLocation))
-					throw new ApplicationException("The XULRunner library is missing or has the wrong version");
-				}
-
-				Xpcom.Initialize(xulRunnerLocation);
+				Xpcom.Initialize(firefoxPath);
 				GeckoPreferences.User["gfx.font_rendering.graphite.enabled"] = true;
-				//Set default browser for XWebBrowser to use GeckoFX.
-				//This can still be changed per instance by passing a parameter to the constructor.
+				// Set default browser for XWebBrowser to use GeckoFX.
+				// This can still be changed per instance by passing a parameter to the constructor.
 				XWebBrowser.DefaultBrowserType = XWebBrowser.BrowserType.GeckoFx;
 #endregion Initialize XULRunner
 
 				Logger.WriteEvent("Starting app");
 				SetGlobalExceptionHandler();
 				SetupErrorReportInformation();
-				// We need FieldWorks here to get the correct registry key HKLM\Software\SIL\FieldWorks.
-				// The default without this would be HKLM\Software\SIL\SIL FieldWorks (wrong).
-				RegistryHelper.ProductName = "FieldWorks";
 
 				// Invoke does nothing directly, but causes BroadcastEventWindow to be initialized
 				// on this thread to prevent race conditions on shutdown.See TE-975
 				// See http://forums.microsoft.com/MSDN/ShowPost.aspx?PostID=911603&SiteID=1
-#if !__MonoCS__
-				SystemEvents.InvokeOnEventsThread(new Action(DoNothing));
-#else
 				// TODO-Linux: uses mono feature that is not implemented. What are the implications of this? Review.
-#endif
+				if (MiscUtils.IsDotNet)
+					SystemEvents.InvokeOnEventsThread(new Action(DoNothing));
+
 				s_threadHelper = new ThreadHelper();
 
 				// ENHANCE (TimS): Another idea for ensuring that we have only one process started for
@@ -268,11 +203,7 @@ namespace SIL.FieldWorks
 				// by a bug in XP.
 				Application.EnableVisualStyles();
 
-				// Set ICU_DATA environment variable
-				SetIcuDataDirEnvironmentVariable();
-
-				// initialize ICU
-				Icu.InitIcuDataDir();
+				FwUtils.InitializeIcu();
 
 				// initialize the SLDR
 				Sldr.Initialize();
@@ -284,14 +215,13 @@ namespace SIL.FieldWorks
 				s_noUserInterface = appArgs.NoUserInterface;
 				s_appServerMode = appArgs.AppServerMode;
 
-				s_ui = new FwFdoUI(GetHelpTopicProvider(), s_threadHelper);
+				s_ui = new FwLcmUI(GetHelpTopicProvider(), s_threadHelper);
 
-				if (CoreImpl.Properties.Settings.Default.CallUpgrade)
-				{
-					CoreImpl.Properties.Settings.Default.Upgrade();
-					CoreImpl.Properties.Settings.Default.CallUpgrade = false;
-				}
-				var reportingSettings = CoreImpl.Properties.Settings.Default.Reporting;
+				s_appSettings = new FwApplicationSettings();
+				s_appSettings.DeleteCorruptedSettingsFilesIfPresent();
+				s_appSettings.UpgradeIfNecessary();
+
+				ReportingSettings reportingSettings = s_appSettings.Reporting;
 				if (reportingSettings == null)
 				{
 					// Note: to simulate this, currently it works to delete all subfolders of
@@ -299,11 +229,11 @@ namespace SIL.FieldWorks
 					// That guid may depend on version or something similar; it's some artifact of how the Settings persists.
 					s_noPreviousReportingSettings = true;
 					reportingSettings = new ReportingSettings();
-					CoreImpl.Properties.Settings.Default.Reporting = reportingSettings; //to avoid a defect in Settings rely on the Save in the code below
+					s_appSettings.Reporting = reportingSettings; //to avoid a defect in Settings rely on the Save in the code below
 				}
 
 				// Allow develpers and testers to avoid cluttering our analytics by setting an environment variable (FEEDBACK = false)
-				var feedbackEnvVar = Environment.GetEnvironmentVariable("FEEDBACK");
+				string feedbackEnvVar = Environment.GetEnvironmentVariable("FEEDBACK");
 				if (feedbackEnvVar != null)
 				{
 					reportingSettings.OkToPingBasicUsageData = feedbackEnvVar.ToLower().Equals("true") || feedbackEnvVar.ToLower().Equals("yes");
@@ -329,16 +259,14 @@ namespace SIL.FieldWorks
 						);
 					// Init updates various things in the ReportingSettings, such as the number of times
 					// the application has been launched and the 'previous' version.
-					CoreImpl.Properties.Settings.Default.Save();
+					s_appSettings.Save();
 				}
 
 				// e.g. the first time the user runs FW9, we need to copy a bunch of registry keys
 				// from HKCU/Software/SIL/FieldWorks/7.0 -> FieldWorks/9 or
-				// from HKCU/Software/SIL/FieldWorks/8 -> FieldWorks/9
+				// from HKCU/Software/SIL/FieldWorks/8 -> FieldWorks/9 and
+				// from HKCU/Software/WOW6432Node/SIL/FieldWorks -> HKCU/Software/SIL/FieldWorks
 				FwRegistryHelper.UpgradeUserSettingsIfNeeded();
-
-				// initialize the TE styles path so that ScrMappingList can load default styles
-				ScrMappingList.TeStylesPath = FwDirectoryFinder.TeStylesPath;
 
 				if (appArgs.ShowHelp)
 				{
@@ -384,7 +312,7 @@ namespace SIL.FieldWorks
 					LaunchRestoreFromCommandLine(appArgs);
 					if (s_flexApp == null)
 						return 0; // Restore was cancelled or failed, or another process took care of it.
-					if (!String.IsNullOrEmpty(s_LinkDirChangedTo))
+					if (!string.IsNullOrEmpty(s_LinkDirChangedTo))
 					{
 						NonUndoableUnitOfWorkHelper.Do(s_cache.ActionHandlerAccessor,
 							() => s_cache.LangProject.LinkedFilesRootDir = s_LinkDirChangedTo);
@@ -396,9 +324,8 @@ namespace SIL.FieldWorks
 				// Create a listener for this project for applications using FLEx as a LexicalProvider.
 				LexicalProviderManager.StartLexicalServiceProvider(s_projectId, s_cache);
 
-#if __MonoCS__
-				UglyHackForXkbIndicator();
-#endif
+				if (MiscUtils.IsMono)
+					UglyHackForXkbIndicator();
 
 				// Application was started successfully, so start the message loop
 				Application.Run();
@@ -425,13 +352,12 @@ namespace SIL.FieldWorks
 					// Doing the shutdown here seems cleaner than using an ApplicationExit
 					// delegate.
 					var foo = new GeckoWebBrowser();
-					Xpcom.Shutdown();
+					Xpcom.Shutdown(); // REVIEW pH 2016.07: likely not necessary with Gecko45
 				}
 			}
 			return 0;
 		}
 
-#if __MonoCS__
 		/// <summary>
 		/// For some reason, setting an Xkb keyboard for the first time doesn't work well inside
 		/// FieldWorks.  The keyboard is actually set (although it may take effect only after the
@@ -458,7 +384,6 @@ namespace SIL.FieldWorks
 			if (wsObj != null && wsObj.LocalKeyboard != null)
 				wsObj.LocalKeyboard.Activate();
 		}
-#endif
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -475,7 +400,7 @@ namespace SIL.FieldWorks
 			// Get the project the user wants to open and attempt to launch it.
 			ProjectId projectId = DetermineProject(appArgs);
 			if (projectId != null && IsSharedXmlBackendNeeded(projectId))
-				projectId.Type = FDOBackendProviderType.kSharedXML;
+				projectId.Type = BackendProviderType.kSharedXML;
 
 			// s_projectId can be non-null if the user decided to restore a project from
 			// the Welcome to Fieldworks dialog. (FWR-2146)
@@ -509,7 +434,7 @@ namespace SIL.FieldWorks
 
 		private static bool IsSharedXmlBackendNeeded(ProjectId projectId)
 		{
-			return projectId.Type == FDOBackendProviderType.kXML && ParatextHelper.GetAssociatedProject(projectId) != null;
+			return projectId.Type == BackendProviderType.kXML && ParatextHelper.GetAssociatedProject(projectId) != null;
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -519,8 +444,6 @@ namespace SIL.FieldWorks
 		/// <param name="appArgs">The command-line arguments.</param>
 		/// <returns>Indication of whether application was successfully created.</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="app is a reference")]
 		private static bool CreateApp(FwAppArgs appArgs)
 		{
 			FwApp app = GetOrCreateApplication(appArgs);
@@ -540,8 +463,14 @@ namespace SIL.FieldWorks
 		/// ------------------------------------------------------------------------------------
 		private static void LaunchRestoreFromCommandLine(FwAppArgs appArgs)
 		{
-				RestoreProject(null, appArgs.BackupFile);
+			if (!string.IsNullOrEmpty(appArgs.Database))
+			{
+				Logger.WriteEvent(string.Concat("Restoring project: ", appArgs.BackupFile));
+				RestoreCurrentProject(new FwRestoreProjectSettings(new RestoreProjectSettings(FwDirectoryFinder.ProjectsDirectory, appArgs.Database, appArgs.BackupFile, appArgs.RestoreOptions)), null);
+				return;
 			}
+			RestoreProject(null, appArgs.BackupFile);
+		}
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -721,7 +650,7 @@ namespace SIL.FieldWorks
 		/// Gets the cache used by this FieldWorks instance.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		internal static FdoCache Cache
+		internal static LcmCache Cache
 		{
 			get { return s_cache; }
 		}
@@ -751,7 +680,7 @@ namespace SIL.FieldWorks
 				try
 				{
 					string thisProcessName = Assembly.GetExecutingAssembly().GetName().Name;
-					string thisSid = BasicUtils.GetUserForProcess(thisProcess);
+					string thisSid = FwUtils.GetUserForProcess(thisProcess);
 					List<Process> processes = Process.GetProcessesByName(thisProcessName).ToList();
 					if (MiscUtils.IsUnix)
 					{
@@ -760,7 +689,7 @@ namespace SIL.FieldWorks
 					}
 					foreach (Process procCurr in processes)
 					{
-						if (procCurr.Id != thisProcess.Id && thisSid == BasicUtils.GetUserForProcess(procCurr))
+						if (procCurr.Id != thisProcess.Id && thisSid == FwUtils.GetUserForProcess(procCurr))
 							existingProcesses.Add(procCurr);
 					}
 				}
@@ -815,9 +744,12 @@ namespace SIL.FieldWorks
 			}
 			catch (Exception exception)
 			{
-				// I (TomH) would rather know about the exception than silently failing. so show exception on Mono least.
-#if DEBUG && __MonoCS__
-				MessageBox.Show(exception.ToString());
+#if DEBUG
+				if (Platform.IsMono)
+				{
+					// I (TomH) would rather know about the exception than silently failing. so show exception on Mono least.
+					MessageBox.Show(exception.ToString());
+				}
 #endif
 			}
 
@@ -852,13 +784,11 @@ namespace SIL.FieldWorks
 		/// </summary>
 		/// <param name="projectId">The project id.</param>
 		/// <returns>
-		/// A new FdoCache used for accessing the specified project, or null, if a
+		/// A new LcmCache used for accessing the specified project, or null, if a
 		/// cache could not be created.
 		/// </returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "owner is a reference")]
-		private static FdoCache CreateCache(ProjectId projectId)
+		private static LcmCache CreateCache(ProjectId projectId)
 		{
 			Debug.Assert(projectId.IsValid);
 
@@ -866,17 +796,58 @@ namespace SIL.FieldWorks
 			Form owner = s_splashScreen != null ? s_splashScreen.Form : Form.ActiveForm;
 			using (var progressDlg = new ProgressDialogWithTask(owner))
 			{
-				FdoCache cache = FdoCache.CreateCacheFromExistingData(projectId, s_sWsUser, s_ui, FwDirectoryFinder.FdoDirectories, CreateFdoSettings(), progressDlg);
+				LcmCache cache = LcmCache.CreateCacheFromExistingData(projectId, s_sWsUser, s_ui, FwDirectoryFinder.LcmDirectories,
+					CreateLcmSettings(), progressDlg);
 				EnsureValidLinkedFilesFolder(cache);
+				string oldPronWss = cache.LangProject.CurPronunWss ?? string.Empty;
 				// Make sure every project has one of these. (Getting it has a side effect if it does not exist.)
 				// Crashes have been caused by trying to create it at an unsafe time (LT-15695).
 				var dummy = cache.LangProject.DefaultPronunciationWritingSystem;
+				string badWss = CheckForDeletedWss(oldPronWss, cache.LangProject.CurPronunWss);
+				if (!string.IsNullOrEmpty(badWss))
+				{
+					string message = string.Format(Properties.Resources.ksNotifyWsRemoved, Environment.NewLine, badWss);
+					MessageBox.Show(message, Properties.Resources.kstidFoundInvalidWs, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+				}
 				cache.ProjectNameChanged += ProjectNameChanged;
 				cache.ServiceLocator.GetInstance<IUndoStackManager>().OnSave += FieldWorks_OnSave;
 
 				SetupErrorPropertiesNeedingCache(cache);
+				EnsureDefaultCollationsPresent(cache);
 				return cache;
 			}
+		}
+
+		private static string CheckForDeletedWss(string oldWssS, string currentWss)
+		{
+			StringBuilder deletedWss = new StringBuilder();
+			var oldWss = oldWssS.Split(' ');
+			foreach (var ws in oldWss)
+			{
+				if (!currentWss.Contains(ws))
+					deletedWss.Append(ws + ", ");
+			}
+			return deletedWss.ToString().TrimEnd(',',' ');
+		}
+
+		private static void EnsureDefaultCollationsPresent(LcmCache cache)
+		{
+			StringBuilder nullCollationWs = new StringBuilder();
+			foreach (CoreWritingSystemDefinition ws in cache.ServiceLocator.WritingSystems.AllWritingSystems)
+			{
+				if (ws != null && ws.DefaultCollation == null)
+				{
+					ws.DefaultCollation = new IcuRulesCollationDefinition("standard");
+					nullCollationWs.Append(ws.DisplayLabel + ",");
+				}
+			}
+			if (nullCollationWs.Length > 0)
+			{
+				nullCollationWs = nullCollationWs.Remove(nullCollationWs.Length - 1, 1);
+				string message = string.Format(ResourceHelper.GetResourceString("kstidMissingDefaultCollation"), nullCollationWs);
+				MessageBox.Show(message);
+			}
+			cache.ServiceLocator.WritingSystemManager.Save();
 		}
 
 		/// <summary>
@@ -885,7 +856,7 @@ namespace SIL.FieldWorks
 		/// for an example of the havoc than can ensue.
 		/// </summary>
 		/// <remarks>This method gets called when we open the FDO cache.</remarks>
-		private static void EnsureValidLinkedFilesFolder(FdoCache cache)
+		private static void EnsureValidLinkedFilesFolder(LcmCache cache)
 		{
 			// If the location of the LinkedFilesRootDir was changed when this project was restored just now;
 			// overwrite the location that was restored from the fwdata file.
@@ -899,7 +870,7 @@ namespace SIL.FieldWorks
 				return;
 
 			var linkedFilesFolder = cache.LangProject.LinkedFilesRootDir;
-			var defaultFolder = FdoFileHelper.GetDefaultLinkedFilesDir(cache.ProjectId.ProjectFolder);
+			var defaultFolder = LcmFileHelper.GetDefaultLinkedFilesDir(cache.ProjectId.ProjectFolder);
 			EnsureValidLinkedFilesFolderCore(linkedFilesFolder, defaultFolder);
 
 			if (!Directory.Exists(linkedFilesFolder))
@@ -938,8 +909,6 @@ namespace SIL.FieldWorks
 		/// that as the most recent interesting project to open for the current main window's app.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "settings is a reference")]
 		private static void FieldWorks_OnSave(object sender, SaveEventArgs e)
 		{
 			if (!e.UndoableChanges)
@@ -961,7 +930,7 @@ namespace SIL.FieldWorks
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
-		/// Commits the and disposes the FdoCache. This is usually called on a separate thread.
+		/// Commits the and disposes the LcmCache. This is usually called on a separate thread.
 		/// </summary>
 		/// <param name="progressDlg">The progress dialog.</param>
 		/// <param name="parameters">The parameters passed in to the caller.</param>
@@ -1044,7 +1013,7 @@ namespace SIL.FieldWorks
 		/// ------------------------------------------------------------------------------------
 		private static void HandleTopLevelError(object sender, ThreadExceptionEventArgs eventArgs)
 		{
-			if (BasicUtils.IsUnsupportedCultureException(eventArgs.Exception)) // LT-8248
+			if (FwUtils.IsUnsupportedCultureException(eventArgs.Exception)) // LT-8248
 			{
 				Logger.WriteEvent("Unsupported culture: " + eventArgs.Exception.Message);
 				return;
@@ -1188,19 +1157,16 @@ namespace SIL.FieldWorks
 		/// <returns>True if the exception was lethal and the user chose to exit,
 		/// false otherise</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "appKey is a reference")]
 		private static bool SafelyReportException(Exception error, IFwMainWnd parent, bool isLethal)
 		{
-				// Be very, very careful about changing stuff here. Code here MUST not throw exceptions,
-				// even when the application is in a crashed state. For example, error reporting failed
-				// before I added the static registry keys, because getting App.SettingsKey failed somehow.
-				RegistryKey appKey = FwRegistryHelper.FieldWorksRegistryKey;
-			if (parent != null && parent.App != null && parent.App == s_flexApp && s_flexAppKey != null)
-					appKey = s_flexAppKey;
-				return ErrorReporter.ReportException(error, appKey, SupportEmail,
-					parent as Form, isLethal);
-			}
+			// Be very, very careful about changing stuff here. Code here MUST not throw exceptions,
+			// even when the application is in a crashed state. For example, error reporting failed
+			// before I added the static registry keys, because getting App.SettingsKey failed somehow.
+			var appKey = FwRegistryHelper.FieldWorksRegistryKey;
+			if (parent?.App != null && parent.App == s_flexApp && s_flexAppKey != null)
+				appKey = s_flexAppKey;
+			return ErrorReporter.ReportException(error, appKey, SupportEmail, parent as Form, isLethal);
+		}
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -1291,8 +1257,6 @@ namespace SIL.FieldWorks
 		/// <param name="args">The application arguments.</param>
 		/// <returns>The project to run, or null if no project could be determined</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="app is a reference")]
 		private static ProjectId DetermineProject(FwAppArgs args)
 		{
 			// Get project information from one of four places, in this order of preference:
@@ -1356,7 +1320,7 @@ namespace SIL.FieldWorks
 		{
 			// From the provided project, return the best possible ProjectId object.
 			return new ProjectId(latestProject);
-				}
+		}
 
 		/// <summary>
 		/// Returns true if valid command-line args created this projectId.
@@ -1394,8 +1358,6 @@ namespace SIL.FieldWorks
 		/// process.
 		/// </returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="app is a reference")]
 		private static bool LaunchProject(FwAppArgs args, ref ProjectId projectId)
 		{
 			while (true)
@@ -1569,7 +1531,7 @@ namespace SIL.FieldWorks
 		/// </summary>
 		/// <param name="sender">The FDO cache (should be the same as our static one).</param>
 		/// ------------------------------------------------------------------------------------
-		private static void ProjectNameChanged(FdoCache sender)
+		private static void ProjectNameChanged(LcmCache sender)
 		{
 			Debug.Assert(sender == s_cache);
 			// The ProjectId should have already been updated (as a result of the rename deep
@@ -1598,8 +1560,6 @@ namespace SIL.FieldWorks
 		/// project being opened; <c>null</c> if the user chooses to exit.
 		/// </returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="startingApp is a reference")]
 		private static ProjectId ShowWelcomeDialog(FwAppArgs args, FwApp startingApp, ProjectId lastProjectId, StartupException exception)
 		{
 			CloseSplashScreen();
@@ -1719,12 +1679,11 @@ namespace SIL.FieldWorks
 								helpTopicProvider, out obtainedProjectType);
 							if (!string.IsNullOrEmpty(projectDataPathname))
 							{
-								projectToTry = new ProjectId(FDOBackendProviderType.kXML, projectDataPathname);
+								projectToTry = new ProjectId(BackendProviderType.kXML, projectDataPathname);
 								var activeWindow = startingApp.ActiveMainWindow;
 								if (activeWindow != null)
 								{
 									var activeWindowInterface = (IFwMainWnd)activeWindow;
-									var activeWindowMediator = activeWindowInterface.Mediator;
 									activeWindowInterface.PropTable.SetProperty("LastBridgeUsed",
 										obtainedProjectType == ObtainedProjectType.Lift ? "LiftBridge" : "FLExBridge",
 										PropertyTable.SettingsGroup.LocalSettings,
@@ -1785,8 +1744,6 @@ namespace SIL.FieldWorks
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// <returns>The chosen project, or null if no project was chosen</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "activeWindow is a reference")]
 		internal static ProjectId ChooseLangProject(Form dialogOwner, IHelpTopicProvider helpTopicProvider)
 		{
 			if (!FwNewLangProject.CheckProjectDirectory(dialogOwner, helpTopicProvider))
@@ -1797,25 +1754,21 @@ namespace SIL.FieldWorks
 			{
 				dlg.ShowDialog(dialogOwner);
 				var app = helpTopicProvider as IApp;
-				if (app != null)
+				Form activeWindow = app?.ActiveMainWindow;
+				if (activeWindow != null && dlg.ObtainedProjectType != ObtainedProjectType.None)
 				{
-					var activeWindow = app.ActiveMainWindow;
-					if (activeWindow != null && dlg.ObtainedProjectType != ObtainedProjectType.None)
-					{
-						var activeWindowInterface = (IFwMainWnd)activeWindow;
-						var activeWindowMediator = activeWindowInterface.Mediator;
-						activeWindowInterface.PropTable.SetProperty("LastBridgeUsed",
-							dlg.ObtainedProjectType == ObtainedProjectType.Lift ? "LiftBridge" : "FLExBridge",
-							PropertyTable.SettingsGroup.LocalSettings,
-							true);
-					}
+					var activeWindowInterface = (IFwMainWnd) activeWindow;
+					activeWindowInterface.PropTable.SetProperty("LastBridgeUsed",
+						dlg.ObtainedProjectType == ObtainedProjectType.Lift ? "LiftBridge" : "FLExBridge",
+						PropertyTable.SettingsGroup.LocalSettings,
+						true);
 				}
 
 				if (dlg.DialogResult == DialogResult.OK)
 				{
 					var projId = new ProjectId(dlg.Project);
 					if (IsSharedXmlBackendNeeded(projId))
-						projId.Type = FDOBackendProviderType.kSharedXML;
+						projId.Type = BackendProviderType.kSharedXML;
 					return projId;
 			}
 
@@ -1878,7 +1831,7 @@ namespace SIL.FieldWorks
 		/// ------------------------------------------------------------------------------------
 		internal static void DeleteProject(Form dialogOwner, IHelpTopicProvider helpTopicProvider)
 		{
-			Set<string> projectsInUse = new Set<string>(ProjectsInUseLocally());
+			var projectsInUse = new HashSet<string>(ProjectsInUseLocally());
 			using (FwDeleteProjectDlg dlg = new FwDeleteProjectDlg(projectsInUse))
 			{
 				dlg.SetDialogProperties(helpTopicProvider);
@@ -2077,9 +2030,6 @@ namespace SIL.FieldWorks
 			}
 			return true;	// shouldn't ever get here, but be safe if we do.
 		}
-
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		private static List<string> GetDriveMountList()
 		{
 			// TODO-Linux: GetDrives() on Mono is only implemented for Linux.
@@ -2258,7 +2208,7 @@ namespace SIL.FieldWorks
 		{
 			var projectName = Path.GetFileName(projectFolder);
 			// If it contains a matching fwdata file it is a project folder.
-			var projectFileName = Path.ChangeExtension(Path.Combine(projectFolder, projectName), FdoFileHelper.ksFwDataXmlFileExtension);
+			var projectFileName = Path.ChangeExtension(Path.Combine(projectFolder, projectName), LcmFileHelper.ksFwDataXmlFileExtension);
 			if(File.Exists(projectFileName))
 				return true;
 			return false;
@@ -2266,7 +2216,7 @@ namespace SIL.FieldWorks
 
 		private static bool IsFieldWorksSettingsFolder(string projectFolder)
 		{
-			var settingsDir = Path.Combine(projectFolder, FdoFileHelper.ksConfigurationSettingsDir);
+			var settingsDir = Path.Combine(projectFolder, LcmFileHelper.ksConfigurationSettingsDir);
 			if (Directory.Exists(settingsDir))
 				return true;
 			return false;
@@ -2507,27 +2457,30 @@ namespace SIL.FieldWorks
 		/// tears.</returns>
 		/// ------------------------------------------------------------------------------------
 		private static bool BackupProjectForRestore(FwRestoreProjectSettings restoreSettings,
-			FdoCache existingCache, Form dialogOwner)
+			LcmCache existingCache, Form dialogOwner)
 		{
 			using (var progressDlg = new ProgressDialogWithTask(dialogOwner))
 			{
-				FdoCache cache = existingCache ?? FdoCache.CreateCacheFromExistingData(
+				LcmCache cache = existingCache ?? LcmCache.CreateCacheFromExistingData(
 					new ProjectId(restoreSettings.Settings.FullProjectPath),
-					s_sWsUser, s_ui, FwDirectoryFinder.FdoDirectories, CreateFdoSettings(), progressDlg);
+					s_sWsUser, s_ui, FwDirectoryFinder.LcmDirectories, CreateLcmSettings(), progressDlg);
 
 				try
 				{
-					var backupSettings = new BackupProjectSettings(cache, restoreSettings.Settings, FwDirectoryFinder.DefaultBackupDirectory);
+					var versionInfoProvider = new VersionInfoProvider(Assembly.GetExecutingAssembly(), false);
+					var backupSettings = new BackupProjectSettings(cache, restoreSettings.Settings,
+						FwDirectoryFinder.DefaultBackupDirectory, versionInfoProvider.MajorVersion);
 					backupSettings.DestinationFolder = FwDirectoryFinder.DefaultBackupDirectory;
 
 					var backupService = new ProjectBackupService(cache, backupSettings);
 					string backupFile;
 					if (!backupService.BackupProject(progressDlg, out backupFile))
 					{
-						string msg = string.Format(FwCoreDlgs.FwCoreDlgs.ksCouldNotBackupSomeFiles, backupService.FailedFiles.ToString(", ", Path.GetFileName));
+						string msg = string.Format(FwCoreDlgs.FwCoreDlgs.ksCouldNotBackupSomeFiles,
+							string.Join(", ", backupService.FailedFiles.Select(Path.GetFileName)));
 						if (MessageBox.Show(msg, FwCoreDlgs.FwCoreDlgs.ksWarning, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
 							File.Delete(backupFile);
-				}
+					}
 				}
 				catch (FwBackupException e)
 				{
@@ -2549,10 +2502,9 @@ namespace SIL.FieldWorks
 			return true;
 		}
 
-		private static FdoSettings CreateFdoSettings()
+		private static LcmSettings CreateLcmSettings()
 		{
-			var settings = new FdoSettings();
-
+			var settings = new LcmSettings();
 			int sharedXmlBackendCommitLogSize = 0;
 			if (FwRegistryHelper.FieldWorksRegistryKey != null)
 				sharedXmlBackendCommitLogSize = (int) FwRegistryHelper.FieldWorksRegistryKey.GetValue("SharedXMLBackendCommitLogSize", 0);
@@ -2560,6 +2512,7 @@ namespace SIL.FieldWorks
 				sharedXmlBackendCommitLogSize = (int) FwRegistryHelper.FieldWorksRegistryKeyLocalMachine.GetValue("SharedXMLBackendCommitLogSize", 0);
 			if (sharedXmlBackendCommitLogSize > 0)
 				settings.SharedXMLBackendCommitLogSize = sharedXmlBackendCommitLogSize;
+			settings.UpdateGlobalWSStore = s_appSettings.UpdateGlobalWSStore;
 			return settings;
 		}
 
@@ -2598,7 +2551,7 @@ namespace SIL.FieldWorks
 				Debug.Assert(s_projectId != null, "We shouldn't try to handle a link request until an application is started");
 				ProjectId linkedProject = new ProjectId(link.DatabaseType, link.Database);
 				if (IsSharedXmlBackendNeeded(linkedProject))
-					linkedProject.Type = FDOBackendProviderType.kSharedXML;
+					linkedProject.Type = BackendProviderType.kSharedXML;
 				if (linkedProject.Equals(s_projectId))
 					FollowLink(link);
 				else if (!TryFindLinkHandler(link))
@@ -2667,8 +2620,6 @@ namespace SIL.FieldWorks
 		/// </summary>
 		/// <param name="app">The application.</param>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		private static void CheckForMovingExternalLinkDirectory(FwApp app)
 		{
 			// Don't crash here if we have a data problem -- that may be due to another issue that
@@ -2697,7 +2648,7 @@ namespace SIL.FieldWorks
 				if (oldDir == null)
 				{
 					// e.g. "C:\\ProgramData\\SIL\\FieldWorks"
-					oldDir = DirectoryFinder.CommonAppDataFolder("FieldWorks");
+					oldDir = FwDirectoryFinder.CommonAppDataFolder("FieldWorks");
 				}
 				oldDir = oldDir.TrimEnd(new [] {Path.PathSeparator});
 				var newDir = app.Cache.LangProject.LinkedFilesRootDir;
@@ -2730,7 +2681,7 @@ namespace SIL.FieldWorks
 			var sLinkedFilesRootDir = app.Cache.LangProject.LinkedFilesRootDir;
 			NonUndoableUnitOfWorkHelper.Do(app.Cache.ActionHandlerAccessor, () =>
 			{
-				app.Cache.LangProject.LinkedFilesRootDir = FdoFileHelper.GetDefaultLinkedFilesDir(
+				app.Cache.LangProject.LinkedFilesRootDir = LcmFileHelper.GetDefaultLinkedFilesDir(
 					app.Cache.ProjectId.ProjectFolder);
 			});
 			app.UpdateExternalLinks(sLinkedFilesRootDir);
@@ -2801,13 +2752,15 @@ namespace SIL.FieldWorks
 					app.InitAndShowMainWindow(fwMainWindow, wndCopyFrom);
 				// It seems to get activated before we connect the Activate event. But it IS active by now;
 				// so just record it now as the active one.
-				s_activeMainWnd = (IFwMainWnd)fwMainWindow;
-				using(new DataUpdateMonitor(fwMainWindow, "Migrating Dictionary Configuration Settings"))
+				s_activeMainWnd = (IFwMainWnd) fwMainWindow;
+				using (new DataUpdateMonitor(fwMainWindow, "Migrating Dictionary Configuration Settings"))
 				{
 					var configMigrator = new DictionaryConfigurationMigrator(s_activeMainWnd.PropTable, s_activeMainWnd.Mediator);
 					configMigrator.MigrateOldConfigurationsIfNeeded();
 				}
 				EnsureValidReversalIndexConfigFile(app.Cache);
+				s_activeMainWnd.PropTable.SetProperty("AppSettings", s_appSettings, false);
+				s_activeMainWnd.PropTable.SetPropertyPersistence("AppSettings", false);
 			}
 			catch (StartupException ex)
 			{
@@ -2828,11 +2781,11 @@ namespace SIL.FieldWorks
 			return true;
 		}
 
-		private static void EnsureValidReversalIndexConfigFile(FdoCache cache)
+		private static void EnsureValidReversalIndexConfigFile(LcmCache cache)
 		{
 			var wsMgr = cache.ServiceLocator.WritingSystemManager;
 			cache.DomainDataByFlid.BeginNonUndoableTask();
-			ReversalIndexServices.CreateReversalIndexConfigurationFile(wsMgr, cache,
+			ReversalIndexServices.CreateOrRemoveReversalIndexConfigurationFiles(wsMgr, cache,
 				FwDirectoryFinder.DefaultConfigurations, FwDirectoryFinder.ProjectsDirectory, cache.LangProject.ShortName);
 			cache.DomainDataByFlid.EndNonUndoableTask();
 		}
@@ -2913,14 +2866,14 @@ namespace SIL.FieldWorks
 		/// ------------------------------------------------------------------------------------
 		private static FwApp GetOrCreateApplication(FwAppArgs args)
 		{
-					if (s_flexApp == null)
-					{
-						s_flexApp = (FwApp)DynamicLoader.CreateObject(FwDirectoryFinder.FlexDll,
-					FwUtils.ksFullFlexAppObjectName, s_fwManager, GetHelpTopicProvider(), args);
-						s_flexAppKey = s_flexApp.SettingsKey;
-					}
-					return s_flexApp;
-				}
+			if (s_flexApp == null)
+			{
+				s_flexApp = (FwApp)DynamicLoader.CreateObject(FwDirectoryFinder.FlexDll, FwUtils.ksFullFlexAppObjectName,
+					s_fwManager, GetHelpTopicProvider(), args);
+				s_flexAppKey = s_flexApp.SettingsKey;
+			}
+			return s_flexApp;
+		}
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -2945,8 +2898,6 @@ namespace SIL.FieldWorks
 		/// <param name="projectId">The project id.</param>
 		/// <returns>True if the application was successfully initialized, false otherwise</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "sparkle is disposed by SingletonsContainer")]
 		private static bool InitializeFirstApp(FwApp app, ProjectId projectId)
 		{
 			Debug.Assert(s_cache == null && s_projectId == null, "This should only get called once");
@@ -2956,7 +2907,7 @@ namespace SIL.FieldWorks
 			{
 				app.RegistrySettings.LoadingProcessId = process.Id;
 			}
-			if (String.IsNullOrEmpty(app.RegistrySettings.LatestProject))
+			if (string.IsNullOrEmpty(app.RegistrySettings.LatestProject))
 			{
 				// Until something gets saved, we will keep track of the first project opened.
 				app.RegistrySettings.LatestProject = projectId.Handle;
@@ -2975,50 +2926,27 @@ namespace SIL.FieldWorks
 				if (s_noUserInterface || InitializeApp(app, s_splashScreen))
 				{
 					app.RegistrySettings.LoadingProcessId = 0;
-#if !__MonoCS__
-					if (!WindowsInstallerQuery.IsThisInstalled() || app.ActiveMainWindow == null)
-						return true;
-
-					// Initialize NetSparkle to check for updates:
-					CoreImpl.Properties.Settings.Default.IsBTE = WindowsInstallerQuery.IsThisBTE();
-
-					var appCastUrl = CoreImpl.Properties.Settings.Default.IsBTE
-						? (CoreImpl.Properties.Settings.Default.CheckForBetaUpdates
-							? CoreImpl.Properties.Resources.ResourceManager.GetString("kstidAppcastBteBetasUrl")
-							: CoreImpl.Properties.Resources.ResourceManager.GetString("kstidAppcastBteUrl"))
-						: (CoreImpl.Properties.Settings.Default.CheckForBetaUpdates
-							? CoreImpl.Properties.Resources.ResourceManager.GetString("kstidAppcastSeBetasUrl")
-							: CoreImpl.Properties.Resources.ResourceManager.GetString("kstidAppcastSeUrl"));
-
-					var sparkle = SingletonsContainer.Get("Sparkle", () => new Sparkle(appCastUrl, app.ActiveMainWindow.Icon));
-					sparkle.AboutToExitForInstallerRun += delegate(object sender, CancelEventArgs args)
-						{
-							CloseAllMainWindows();
-							if(app.ActiveMainWindow != null)
-							{
-								args.Cancel = true;
-							}
-						};
-					if (CoreImpl.Properties.Settings.Default.AutoCheckForUpdates)
-						sparkle.CheckOnFirstApplicationIdle();
-#endif
 					return true;
 				}
 			}
-			catch (UnauthorizedAccessException uae)
+			catch (StartupException sue)
 			{
-				if (MiscUtils.IsUnix)
+				if (MiscUtils.IsUnix && sue.InnerException is UnauthorizedAccessException)
 				{
 					// Tell Mono user he/she needs to logout and log back in
 					MessageBox.Show(ResourceHelper.GetResourceString("ksNeedToJoinFwGroup"));
 				}
 				throw;
 			}
-			catch (FdoDataMigrationForbiddenException)
+			catch (LcmDataMigrationForbiddenException)
 			{
 				// tell the user to close all other applications using this project
 				MessageBox.Show(ResourceHelper.GetResourceString("kstidDataMigrationProhibitedText"),
 					ResourceHelper.GetResourceString("kstidDataMigrationProhibitedCaption"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+			catch (LcmInitializationException fie)
+			{
+				throw new StartupException(fie.Message, fie);
 			}
 			finally
 			{
@@ -3053,10 +2981,12 @@ namespace SIL.FieldWorks
 					if (!app.InitCacheForApp(progressDlg))
 						throw new StartupException(Properties.Resources.kstidCacheInitFailure);
 				}
+				catch (StartupException)
+				{
+					throw;
+				}
 				catch (Exception e)
 				{
-					if (e is StartupException)
-						throw;
 					throw new StartupException(Properties.Resources.kstidCacheInitFailure, e, true);
 				}
 				undoHelper.RollBack = false;
@@ -3163,7 +3093,7 @@ namespace SIL.FieldWorks
 			if (s_flexApp != null)
 				return; // this isn't the last one to shut down, not time to record.
 
-			var settingsFolder = Path.Combine(Cache.ProjectId.ProjectFolder, FdoFileHelper.ksConfigurationSettingsDir);
+			var settingsFolder = Path.Combine(Cache.ProjectId.ProjectFolder, LcmFileHelper.ksConfigurationSettingsDir);
 			try
 			{
 				Directory.CreateDirectory(settingsFolder); // make sure
@@ -3420,7 +3350,8 @@ namespace SIL.FieldWorks
 
 			KeyboardController.Shutdown();
 
-			Sldr.Cleanup();
+			if (Sldr.IsInitialized)
+				Sldr.Cleanup();
 
 			GracefullyShutDown();
 
@@ -3475,8 +3406,6 @@ namespace SIL.FieldWorks
 		/// to the ErrorReporter so that it can be reported with a crash.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		private static void SetupErrorReportInformation()
 		{
 			string version = Version;
@@ -3548,7 +3477,7 @@ namespace SIL.FieldWorks
 		/// be reported with a crash.
 		/// </summary>
 		/// ------------------------------------------------------------------------------------
-		private static void SetupErrorPropertiesNeedingCache(FdoCache cache)
+		private static void SetupErrorPropertiesNeedingCache(LcmCache cache)
 		{
 			ErrorReporter.AddProperty("ProjectName", cache.ProjectId.Name);
 			ErrorReporter.AddProperty("ProjectHandle", cache.ProjectId.Handle);
@@ -3612,19 +3541,19 @@ namespace SIL.FieldWorks
 		/// <returns></returns>
 		internal static FwApp ReopenProject(string project, FwAppArgs appArgs)
 		{
-			ExecuteWithAppsShutDown(()=>
-												{
-													try
-													{
-														HandleLinkRequest(appArgs);
-														return s_projectId;
-													}
-													catch (Exception e)
-													{
-														//This is not good.
-													}
-													return null;
-												});
+			ExecuteWithAppsShutDown(() =>
+				{
+					try
+					{
+						HandleLinkRequest(appArgs);
+						return s_projectId;
+					}
+					catch (Exception e)
+					{
+						//This is not good.
+					}
+					return null;
+				});
 			return s_flexApp;
 		}
 
@@ -3846,8 +3775,6 @@ namespace SIL.FieldWorks
 		/// <param name="projectName">Name of the project where we might switch to the newer writing system.</param>
 		/// <returns><c>true</c> to accept newer version; <c>false</c> otherwise</returns>
 		/// ------------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "owner is a reference")]
 		private static bool ComplainToUserAboutNewWs(string wsLabel, string projectName)
 		{
 			// Assume they want the WS updated when we're not supposed to show a UI.
@@ -3875,86 +3802,5 @@ namespace SIL.FieldWorks
 		#endregion
 	}
 	#endregion
-
-#region WindowsInstallerQuery Class
-#if !__MonoCS__
-
-	///<summary>
-	/// Class to find out some details about the current FW installation.
-	///</summary>
-	static public class WindowsInstallerQuery
-	{
-		private const string InstallerProductCode = "{8E80F1ED-826A-46d5-A59A-D8A203F2F0D9}";
-		private const string InstalledProductNameProperty = "InstalledProductName";
-		private const string TeFeatureName = "TE";
-
-		private const int ErrorMoreData = 234;
-		private const int ErrorUnknownProduct = 1605;
-		private const int ErrorUnknownFeature = 1606;
-
-		[DllImport("msi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-		private static extern Int32 MsiGetProductInfo(string product, string property,
-			StringBuilder valueBuf, ref Int32 cchValueBuf);
-
-		[DllImport("msi.dll", CharSet = CharSet.Unicode)]
-		internal static extern uint MsiOpenProduct(string szProduct, out int hProduct);
-
-		[DllImport("msi.dll", CharSet = CharSet.Unicode)]
-		internal static extern uint MsiGetFeatureInfo(int hProduct, string szFeature, out uint lpAttributes, StringBuilder lpTitleBuf, ref uint cchTitleBuf, StringBuilder lpHelpBuf, ref uint cchHelpBuf);
-
-		/// <summary>
-		/// Check the installer status to see if FW is installed on the user's machine.
-		/// If not, it can be assumed we are running on a developer's machine.
-		/// </summary>
-		/// <returns>True if this is an installed version</returns>
-		public static bool IsThisInstalled()
-		{
-			string productName;
-
-			var status = GetProductInfo(InstalledProductNameProperty, out productName);
-
-			return status != ErrorUnknownProduct;
-		}
-
-		/// <summary>
-		/// Check the installer status to see if we are running a BTE version of FW.
-		/// If the product is not installed then we assume this is a developer build
-		/// and just say it's BTE anyway.
-		/// </summary>
-		/// <returns>True if this is a BTE version</returns>
-		public static bool IsThisBTE()
-		{
-			string productName;
-
-			var status = GetProductInfo(InstalledProductNameProperty, out productName);
-
-			if (status == ErrorUnknownProduct)
-				return true; // Assume it's BTE if we can't find installation information
-
-			return productName.EndsWith("BTE");
-		}
-
-		private static Int32 GetProductInfo(string propertyName, out string propertyValue)
-		{
-			var sbBuffer = new StringBuilder();
-			var len = sbBuffer.Capacity;
-			sbBuffer.Length = 0;
-
-			var status = MsiGetProductInfo(InstallerProductCode, propertyName, sbBuffer, ref len);
-			if (status == ErrorMoreData)
-			{
-				len++;
-				sbBuffer.EnsureCapacity(len);
-				status = MsiGetProductInfo(InstallerProductCode, InstalledProductNameProperty, sbBuffer, ref len);
-			}
-
-			propertyValue = sbBuffer.ToString();
-
-			return status;
-		}
-	}
-
-#endif
-#endregion
 
 }

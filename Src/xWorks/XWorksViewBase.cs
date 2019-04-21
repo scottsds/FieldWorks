@@ -1,13 +1,7 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: RecordView.cs
-// Responsibility: WordWorks
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -16,9 +10,10 @@ using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.FieldWorks.FdoUi;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.Utils;
 using XCore;
 
@@ -165,11 +160,11 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// FDO cache.
 		/// </summary>
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get
 			{
-				return m_propertyTable.GetValue<FdoCache>("cache");
+				return m_propertyTable.GetValue<LcmCache>("cache");
 			}
 		}
 
@@ -497,20 +492,8 @@ namespace SIL.FieldWorks.XWorks
 			string className = StringTable.Table.GetString("No Record", "Misc");
 			if (Clerk.CurrentObject != null)
 			{
-				string typeName = Clerk.CurrentObject.GetType().Name;
-				if (Clerk.CurrentObject is ICmPossibility)
-				{
-					var possibility = Clerk.CurrentObject as ICmPossibility;
-					className = possibility.ItemTypeName();
-				}
-				else
-				{
-					className = StringTable.Table.GetString(typeName, "ClassNames");
-				}
-				if (className == "*" + typeName + "*")
-				{
-					className = typeName;
-				}
+				using (var uiObj = CmObjectUi.MakeUi(Clerk.CurrentObject))
+					className = uiObj.DisplayNameOfClass;
 			}
 			else
 			{
@@ -529,7 +512,7 @@ namespace SIL.FieldWorks.XWorks
 			// First-chance exception at 0x4ed9b280 in Flex.exe: 0xC0000005: Access violation writing location 0x00f90004.
 			// The following code doesn't cause the exception, but neither one actually sets the Text to className,
 			// so something needs to be changed somewhere. It doesn't enter "override string Text" in PaneBar.cs
-			(m_informationBar as IPaneBar).Text = className;
+			((IPaneBar) m_informationBar).Text = className;
 		}
 
 		#endregion Other methods
@@ -635,6 +618,9 @@ namespace SIL.FieldWorks.XWorks
 				case "notebook":
 					inFriendlyTerritory = toolChoice == "notebookEdit" || toolChoice == "notebookBrowse";
 					break;
+				case "textsWords":
+					inFriendlyTerritory = toolChoice == "interlinearEdit" || toolChoice == "gloss";
+					break;
 			}
 
 			display.Enabled = display.Visible = inFriendlyTerritory;
@@ -661,6 +647,9 @@ namespace SIL.FieldWorks.XWorks
 					break;
 				case "notebook":
 					locationType = AddCustomFieldDlg.LocationType.Notebook;
+					break;
+				case "textsWords":
+					locationType = AddCustomFieldDlg.LocationType.Interlinear;
 					break;
 			}
 			using (var dlg = new AddCustomFieldDlg(m_mediator, m_propertyTable, locationType))

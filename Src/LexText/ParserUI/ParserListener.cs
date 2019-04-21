@@ -1,10 +1,6 @@
-// Copyright (c) 2002-2013 SIL International
+// Copyright (c) 2002-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ParserListener.cs
-// Responsibility: John Hatton
-// Last reviewed:
 //
 // <remarks>
 // This is an XCore "Listener" which facilitates interaction with the Parser.
@@ -16,18 +12,18 @@
 //		</listeners>
 //	</code>
 // </example>
-// --------------------------------------------------------------------------------------------
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.WordWorks.Parser;
 using SIL.FieldWorks.XWorks;
 using SIL.Utils;
@@ -40,11 +36,11 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// out of the form code. It is scheduled for refactoring
 	/// </summary>
 	[MediatorDispose]
-	public class ParserListener : IxCoreColleague, IFWDisposable, IVwNotifyChange
+	public class ParserListener : IxCoreColleague, IDisposable, IVwNotifyChange
 	{
 		private Mediator m_mediator;
 		private PropertyTable m_propertyTable;
-		private FdoCache m_cache; //a pointer to the one owned by from the form
+		private LcmCache m_cache; //a pointer to the one owned by from the form
 		/// <summary>
 		/// Use this to do the Add/RemoveNotifications, since it can be used in the unmanged section of Dispose.
 		/// (If m_sda is COM, that is.)
@@ -67,7 +63,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
-			m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 			mediator.AddColleague(this);
 
 			m_sda = m_cache.MainCacheAccessor;
@@ -124,9 +120,11 @@ namespace SIL.FieldWorks.LexText.Controls
 
 			if (m_parserConnection != null && propertyName == "ActiveClerkSelectedObject")
 			{
-				var wordform = m_propertyTable.GetValue<IWfiWordform>(propertyName);
+				var wordform = m_propertyTable.GetValue<ICmObject>(propertyName) as IWfiWordform;
 				if (wordform != null)
+				{
 					m_parserConnection.UpdateWordform(wordform, ParserPriority.High);
+				}
 			}
 		}
 
@@ -223,20 +221,9 @@ namespace SIL.FieldWorks.LexText.Controls
 				if (ex != null)
 				{
 					DisconnectFromParser();
-					var iree = ex as InvalidReduplicationEnvironmentException;
-					if (iree != null)
-					{
-						string msg = String.Format(ParserUIStrings.ksHermitCrabReduplicationProblem, iree.Morpheme,
-							iree.Message);
-						MessageBox.Show(Form.ActiveForm, msg, ParserUIStrings.ksBadAffixForm,
-								MessageBoxButtons.OK, MessageBoxIcon.Error);
-					}
-					else
-					{
 						var app = m_propertyTable.GetValue<IApp>("App");
-						ErrorReporter.ReportException(ex, app.SettingsKey, app.SupportEmailAddress,
-													  app.ActiveMainWindow, false);
-					}
+					ErrorReporter.ReportException(ex, app.SettingsKey, app.SupportEmailAddress,
+													app.ActiveMainWindow, false);
 				}
 				else
 				{
@@ -418,7 +405,7 @@ namespace SIL.FieldWorks.LexText.Controls
 				if (InInterlinearText)
 					wordform = m_propertyTable.GetValue<IWfiWordform>("TextSelectedWord");
 				else if (InWordAnalyses)
-					wordform = m_propertyTable.GetValue<IWfiWordform>("ActiveClerkSelectedObject");
+					wordform = m_propertyTable.GetValue<ICmObject>("ActiveClerkSelectedObject") as IWfiWordform;
 				return wordform;
 			}
 		}

@@ -1,18 +1,17 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
@@ -54,10 +53,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <summary>
 		/// Override method to handle launching of a chooser for selecting lexical entries.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification="See TODO-Linux comment")]
 		protected override void HandleChooser()
 		{
 			string displayWs = "analysis vernacular";
@@ -201,7 +196,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 			if (CheckForAffixDataLoss(affix, rgmsaOld))
 				return false;
-			FdoCache cache = m_cache;
+			LcmCache cache = m_cache;
 			var stem = m_cache.ServiceLocator.GetInstance<IMoStemAllomorphFactory>().Create();
 			SwapValues(entry, affix, stem, type, rgmsaOld);	// may cause slice/button to be disposed...
 			return true;
@@ -320,7 +315,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 			if (CheckForStemDataLoss(stem, rgmsaOld))
 				return false;
-			FdoCache cache = m_cache;
+			LcmCache cache = m_cache;
 			var affix = m_cache.ServiceLocator.GetInstance<IMoAffixAllomorphFactory>().Create();
 			SwapValues(entry, stem, affix, type, rgmsaOld);
 			return true;
@@ -364,8 +359,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			return false;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "dtree is a reference")]
 		private void SwapValues(ILexEntry entry, IMoForm origForm, IMoForm newForm, IMoMorphType type,
 			List<IMoMorphSynAnalysis> rgmsaOld)
 		{

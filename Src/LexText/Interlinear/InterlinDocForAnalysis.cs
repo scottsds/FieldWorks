@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2015 SIL International
+﻿// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -9,15 +9,17 @@ using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
 using XCore;
 
 namespace SIL.FieldWorks.IText
@@ -76,7 +78,7 @@ namespace SIL.FieldWorks.IText
 
 		internal void SuppressResettingGuesses(Action task)
 		{
-			m_vc.Decorator.SuppressResettingGuesses(task);
+			Vc.Decorator.SuppressResettingGuesses(task);
 		}
 
 		public override void PropChanged(int hvo, int tag, int ivMin, int cvIns, int cvDel)
@@ -182,7 +184,7 @@ namespace SIL.FieldWorks.IText
 		/// </summary>
 		protected override void MakeVc()
 		{
-			m_vc = new InterlinDocForAnalysisVc(m_fdoCache);
+			Vc = new InterlinDocForAnalysisVc(m_cache);
 		}
 
 		#region Overrides of RootSite
@@ -194,8 +196,8 @@ namespace SIL.FieldWorks.IText
 		/// </summary>
 		protected override void OnLostFocus(EventArgs e)
 		{
-			if (m_vc != null)
-				m_vc.SetActiveFreeform(0, 0, 0, 0);
+			if (Vc != null)
+				Vc.SetActiveFreeform(0, 0, 0, 0);
 			base.OnLostFocus(e);
 		}
 
@@ -241,7 +243,7 @@ namespace SIL.FieldWorks.IText
 				}
 				return;
 			}
-			if (!m_vc.CanBeAnalyzed(target))
+			if (!Vc.CanBeAnalyzed(target))
 				return;
 #if DEBUG
 			// test preconditions.
@@ -316,9 +318,9 @@ namespace SIL.FieldWorks.IText
 		// Set the VC size to match the FocusBox. Return true if it changed.
 		bool SetFocusBoxSizeForVc()
 		{
-			if (m_vc == null || ExistingFocusBox == null)
+			if (Vc == null || ExistingFocusBox == null)
 				return false;
-			var interlinDocForAnalysisVc = m_vc as InterlinDocForAnalysisVc;
+			var interlinDocForAnalysisVc = Vc as InterlinDocForAnalysisVc;
 			if (interlinDocForAnalysisVc == null)
 				return false; // testing only? Anyway nothing can change.
 			//FocusBox.PerformLayout();
@@ -454,10 +456,13 @@ namespace SIL.FieldWorks.IText
 		protected override void OnPaint(PaintEventArgs e)
 		{
 			base.OnPaint(e);
-#if !__MonoCS__ // FWNX-419
+
+			if (Platform.IsMono)
+				return;
+
+			// FWNX-419
 			if (!MouseMoveSuppressed && IsFocusBoxInstalled)
 				MoveFocusBoxIntoPlace(true);
-#endif
 		}
 
 		/// <summary>
@@ -721,7 +726,7 @@ namespace SIL.FieldWorks.IText
 			// Enhance JohnT: ideally we would probably figure this margin
 			// to exactly match the margin between words set by the VC.
 			int left = rcPrimary.left;
-			if (m_vc.RightToLeft)
+			if (Vc.RightToLeft)
 				left += 8;
 			return new Point(left, rcPrimary.top);
 		}
@@ -778,11 +783,11 @@ namespace SIL.FieldWorks.IText
 		{
 			get
 			{
-				return ((InterlinDocForAnalysisVc) m_vc).FocusBoxOccurrence;
+				return ((InterlinDocForAnalysisVc) Vc).FocusBoxOccurrence;
 			}
 			set
 			{
-				((InterlinDocForAnalysisVc)m_vc).FocusBoxOccurrence = value;
+				((InterlinDocForAnalysisVc)Vc).FocusBoxOccurrence = value;
 				m_propertyTable.SetProperty("TextSelectedWord",
 					value != null && value.HasWordform ? value.Analysis.Wordform : null,
 					true);
@@ -1226,11 +1231,11 @@ namespace SIL.FieldWorks.IText
 				case kTagUserPrompt: // user prompt property for empty translation annotations
 					// Is this free or literal?
 					hasPrompt = true;
-					id = m_vc.ActiveFreeformFlid;
+					id = Vc.ActiveFreeformFlid;
 					id = (id == SegmentTags.kflidLiteralTranslation) ?
 						InterlinLineChoices.kflidLitTrans : InterlinLineChoices.kflidFreeTrans;
 					if (wid == 0)
-						wid = m_vc.ActiveFreeformWs;
+						wid = Vc.ActiveFreeformWs;
 					where = WhichEnd.Both;
 					break;
 				default: // not expected
@@ -1365,7 +1370,7 @@ namespace SIL.FieldWorks.IText
 				index++;
 				int ind = forward ? index : seg.AnalysesRS.Count - index;
 				realAnalysis = new AnalysisOccurrence(seg, ind);
-				if (m_vc.CanBeAnalyzed(realAnalysis))
+				if (Vc.CanBeAnalyzed(realAnalysis))
 				{
 					found = true;
 					break; // found the first or last real analysis
@@ -1462,13 +1467,10 @@ namespace SIL.FieldWorks.IText
 			ISegment seg;
 			if (!CanAddWordGlosses(out seg, out ws))
 				return;
-			int wsText = WritingSystemServices.ActualWs(Cache, WritingSystemServices.kwsVernInParagraph,
-				m_hvoRoot, StTextTags.kflidParagraphs);
 
-			ITsStrBldr bldr = TsStrBldrClass.Create();
-			ITsStrFactory tsf = TsStrFactoryClass.Create();
+			ITsStrBldr bldr = TsStringUtils.MakeStrBldr();
 			bool fOpenPunc = false;
-			ITsString space = TsStringUtils.MakeTss(" ", ws);
+			ITsString space = TsStringUtils.MakeString(" ", ws);
 			foreach (var analysis in seg.AnalysesRS)
 			{
 				ITsString insert = null;
@@ -1507,7 +1509,7 @@ namespace SIL.FieldWorks.IText
 					else if (analysis is IWfiAnalysis || analysis is IWfiWordform)
 					{
 						// check if we have a guess cached with a gloss. (LT-9973)
-						int guessHvo = m_vc.GetGuess(analysis);
+						int guessHvo = Vc.GetGuess(analysis);
 						if (guessHvo != 0)
 						{
 							var guess = Cache.ServiceLocator.ObjectRepository.GetObject(guessHvo) as IWfiGloss;
@@ -1535,7 +1537,7 @@ namespace SIL.FieldWorks.IText
 			// is being changed.  See LT-9421.
 			SetCpropPreviousForInsert();
 			var helper = SelectionHelper.Create(this);
-			int flid = m_vc.ActiveFreeformFlid;
+			int flid = Vc.ActiveFreeformFlid;
 			UndoableUnitOfWorkHelper.Do(ITextStrings.ksUndoSetTransFromWordGlosses,
 				ITextStrings.ksRedoSetTransFromWordGlosses,
 				Cache.ActionHandlerAccessor,
@@ -1612,10 +1614,10 @@ namespace SIL.FieldWorks.IText
 						int hvoSeg = rgsli[itagSegments].hvo;
 						var annType = freeAnn.AnnotationTypeRA;
 						int idx = 0;
-						var choices = m_vc.LineChoices;
+						var choices = Vc.LineChoices;
 						for (int i = choices.FirstFreeformIndex; i < choices.Count; )
 						{
-							var ffAannType = m_vc.SegDefnFromFfFlid(choices[i].Flid);
+							var ffAannType = Vc.SegDefnFromFfFlid(choices[i].Flid);
 							if (ffAannType == annType)
 							{
 								idx = i;
@@ -1624,9 +1626,9 @@ namespace SIL.FieldWorks.IText
 							// Adjacent WSS of the same annotation count as only ONE object in the display.
 							// So we advance i over as many items in m_choices as there are adjacent Wss
 							// of the same flid.
-							i += choices.AdjacentWssAtIndex(i).Length;
+							i += choices.AdjacentWssAtIndex(i, hvoSeg).Length;
 						}
-						int[] rgws = choices.AdjacentWssAtIndex(idx);
+						int[] rgws = choices.AdjacentWssAtIndex(idx, hvoSeg);
 						for (int i = 0; i < rgws.Length; ++i)
 						{
 							if (rgws[i] == wsField)
@@ -1729,7 +1731,7 @@ namespace SIL.FieldWorks.IText
 				}
 				else if (flid != kTagUserPrompt)
 				{
-					m_vc.SetActiveFreeform(0, 0, 0, 0); // clear any current prompt.
+					Vc.SetActiveFreeform(0, 0, 0, 0); // clear any current prompt.
 				}
 				// do not extend the selection for a user prompt if the user is currently entering an IME composition,
 				// since we are about to switch the prompt to a real comment field
@@ -1757,7 +1759,7 @@ namespace SIL.FieldWorks.IText
 		private void SetupTranslationPrompt(SelectionHelper helper, int flid)
 		{
 			IVwSelection sel;
-			m_vc.SetActiveFreeform(helper.LevelInfo[0].hvo, flid, helper.Ws, helper.NumberOfPreviousProps);
+			Vc.SetActiveFreeform(helper.LevelInfo[0].hvo, flid, helper.Ws, helper.NumberOfPreviousProps);
 			helper.SetTextPropId(SelectionHelper.SelLimitType.Anchor, kTagUserPrompt);
 			helper.SetTextPropId(SelectionHelper.SelLimitType.End, kTagUserPrompt);
 			helper.NumberOfPreviousProps = 0; // only ever one occurrence of prompt.
@@ -1850,7 +1852,7 @@ namespace SIL.FieldWorks.IText
 
 		protected virtual FocusBoxController CreateFocusBoxInternal()
 		{
-			return new FocusBoxControllerForDisplay(m_mediator, m_propertyTable, m_styleSheet, LineChoices, m_vc.RightToLeft);
+			return new FocusBoxControllerForDisplay(m_mediator, m_propertyTable, m_styleSheet, LineChoices, Vc.RightToLeft);
 		}
 
 		/// <summary>
@@ -1981,18 +1983,20 @@ namespace SIL.FieldWorks.IText
 			{
 				pt = PixelToView(new Point(e.X, e.Y));
 				GetCoordRects(out rcSrcRoot, out rcDstRoot);
-#if __MonoCS__
-				// Adjust the destination to the original scroll position.  This completes
-				// the fix for FWNX-794/851.
-				rcDstRoot.Location = m_ptScrollPos;
-#endif
+
+				if (Platform.IsMono)
+				{
+					// Adjust the destination to the original scroll position.  This completes
+					// the fix for FWNX-794/851.
+					rcDstRoot.Location = m_ptScrollPos;
+				}
+
 				IVwSelection sel = RootBox.MakeSelAt(pt.X, pt.Y, rcSrcRoot, rcDstRoot, false);
 				if (sel == null || !HandleClickSelection(sel, false, false))
 					base.OnMouseDown(e);
 			}
 		}
 
-#if __MonoCS__
 		/// <summary>
 		/// The Mono runtime changes the scroll position to the currently existing control
 		/// before passing on to the OnMouseDown method.  This works fine for statically defined
@@ -2010,15 +2014,15 @@ namespace SIL.FieldWorks.IText
 		/// to compile FieldWorks.
 		/// </remarks>
 		private Point m_ptScrollPos;
-#endif
 
 		public override void OriginalWndProc(ref Message msg)
 		{
-#if __MonoCS__
-			// When handling a left mouse button down event, save the original scroll position.
-			if (msg.Msg == (int)Win32.WinMsgs.WM_LBUTTONDOWN)
-				m_ptScrollPos = AutoScrollPosition;
-#endif
+			if (Platform.IsMono)
+			{
+				// When handling a left mouse button down event, save the original scroll position.
+				if (msg.Msg == (int)Win32.WinMsgs.WM_LBUTTONDOWN)
+					m_ptScrollPos = AutoScrollPosition;
+			}
 			base.OriginalWndProc(ref msg);
 		}
 
@@ -2197,9 +2201,9 @@ namespace SIL.FieldWorks.IText
 				});
 
 			TryHideFocusBoxAndUninstall();
-			if (m_vc.LineChoices.IndexOf(InterlinLineChoices.kflidNote) < 0)
+			if (Vc.LineChoices.IndexOf(InterlinLineChoices.kflidNote) < 0)
 			{
-				m_vc.LineChoices.Add(InterlinLineChoices.kflidNote);
+				Vc.LineChoices.Add(InterlinLineChoices.kflidNote);
 				PersistAndDisplayChangedLineChoices();
 			}
 
@@ -2226,14 +2230,14 @@ namespace SIL.FieldWorks.IText
 
 		internal void RecordGuessIfNotKnown(AnalysisOccurrence selected)
 		{
-			if (m_vc != null) // I think this only happens in tests.
-				m_vc.RecordGuessIfNotKnown(selected);
+			if (Vc != null) // I think this only happens in tests.
+				Vc.RecordGuessIfNotKnown(selected);
 		}
 
 		internal IAnalysis GetGuessForWordform(IWfiWordform wf, int ws)
 		{
-			if (m_vc != null)
-				return m_vc.GetGuessForWordform(wf, ws);
+			if (Vc != null)
+				return Vc.GetGuessForWordform(wf, ws);
 			return null;
 		}
 
@@ -2313,7 +2317,7 @@ namespace SIL.FieldWorks.IText
 							IAnalysis occAn = occ.Analysis; // averts “Access to the modified closure” warning in resharper
 							if (occAn is IWfiAnalysis || occAn is IWfiWordform)
 							{   // this is an analysis or a wordform
-								int hvo = m_vc.GetGuess(occAn);
+								int hvo = Vc.GetGuess(occAn);
 								if (occAn.Hvo != hvo)
 								{   // this is a guess, so approve it
 									// 1) A second occurence of a word that has had a lexicon entry or sense created for it.
@@ -2351,7 +2355,7 @@ namespace SIL.FieldWorks.IText
 
 	public class InterlinDocForAnalysisVc : InterlinVc
 	{
-		public InterlinDocForAnalysisVc(FdoCache cache)
+		public InterlinDocForAnalysisVc(LcmCache cache)
 			: base(cache)
 		{
 			FocusBoxSize = new Size(100000, 50000); // If FocusBoxAnnotation is set, this gives the size of box to make. (millipoints)
@@ -2402,9 +2406,10 @@ namespace SIL.FieldWorks.IText
 					// first line of text) an appropriate distance from the top of the Sandbox. This aligns it's
 					// top line of text properly.
 					// Enhance JohnT: 90% of font height is not always exactly right, but it's the closest
-					// I can get wihtout a new API to get the exact ascent of the font.
+					// I can get without a new API to get the exact ascent of the font.
+					var wsSeg = TsStringUtils.GetWsAtOffset(FocusBoxOccurrence.Segment.BaselineText, 0);
 					int dympBaseline = Common.Widgets.FontHeightAdjuster.
-						GetFontHeightForStyle("Normal", m_stylesheet, m_wsVernForDisplay,
+						GetFontHeightForStyle("Normal", m_stylesheet, wsSeg,
 						m_cache.LanguageWritingSystemFactoryAccessor) * 9 / 10;
 					uint transparent = 0xC0000000; // FwTextColor.kclrTransparent won't convert to uint
 					vwenv.AddSimpleRect((int)transparent,

@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -7,26 +7,24 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Diagnostics;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using XCore;
-using SIL.Utils;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Common.FwUtils;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.XWorks.LexEd
 {
 	/// <summary>
 	/// Summary description for SwapLexemeWithAllomorphDlg.
 	/// </summary>
-	public class SwapLexemeWithAllomorphDlg : Form, IFWDisposable
+	public class SwapLexemeWithAllomorphDlg : Form
 	{
 		private FwTextBox m_fwTextBoxBottomMsg;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private ILexEntry m_entry;
 		private IMoForm m_allomorph;
-		private ITsStrFactory m_tsf;
-		private Mediator m_mediator;
 		private PropertyTable m_propertyTable;
 		private Label label2;
 		private PictureBox pictureBox1;
@@ -52,8 +50,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "infoIcon is a reference")]
 		public SwapLexemeWithAllomorphDlg()
 		{
 			//
@@ -96,21 +92,15 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <summary>
 		/// Set up the dlg in preparation to showing it.
 		/// </summary>
-		/// <param name="cache">FDO cache.</param>
-		/// <param name="mediator"></param>
-		/// <param name="propertyTable"></param>
-		/// <param name="entry">LexEntry</param>
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, PropertyTable propertyTable, ILexEntry entry)
+		public void SetDlgInfo(LcmCache cache, PropertyTable propertyTable, ILexEntry entry)
 		{
 			CheckDisposed();
 
 			Debug.Assert(cache != null);
 
-			m_mediator = mediator;
 			m_propertyTable = propertyTable;
 			m_cache = cache;
 			m_entry = entry;
-			m_tsf = m_cache.TsStrFactory;
 			m_fwTextBoxBottomMsg.WritingSystemFactory = m_cache.WritingSystemFactory;
 			//m_fwTextBoxBottomMsg.WritingSystemCode = 1; // What!? Why? No longer makes ANY sense!
 			IVwStylesheet stylesheet = FontHeightAdjuster.StyleSheetFromPropertyTable(m_propertyTable);
@@ -174,7 +164,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// </summary>
 		protected override void Dispose(bool disposing)
 		{
-			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + ". ****** ");
+			Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + ". ****** ");
 			// Must not be run more than once.
 			if (IsDisposed)
 				return;
@@ -183,16 +173,12 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			{
 				Controls.Remove(m_fwTextBoxBottomMsg);
 				m_fwTextBoxBottomMsg.Dispose();
-				if(components != null)
+				if (components != null)
 				{
 					components.Dispose();
 				}
 			}
 			m_fwTextBoxBottomMsg = null;
-			m_mediator = null;
-			if (m_tsf != null)
-				System.Runtime.InteropServices.Marshal.ReleaseComObject(m_tsf);
-			m_tsf = null;
 			m_cache = null;
 
 			base.Dispose( disposing );
@@ -205,16 +191,11 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			int userWs = m_cache.ServiceLocator.WritingSystemManager.UserWs;
 			m_fwTextBoxBottomMsg.WritingSystemFactory = m_cache.LanguageWritingSystemFactoryAccessor;
 			m_fwTextBoxBottomMsg.WritingSystemCode = userWs;
-			string sLexVal = m_entry.LexemeFormOA.Form.VernacularDefaultWritingSystem.Text;
+			string sLexVal = m_entry.LexemeFormOA.Form.VernacularDefaultWritingSystem.Text ?? "";
 			// Treat null value as empty string.  This fixes LT-5889, LT-5891, and LT-5914.
-			if (sLexVal == null)
-				sLexVal = "";
-			ITsString tss;
 			string sFmt = LexEdStrings.ksSwapXWithY;
-			string sWithVal = m_allomorph.Form.VernacularDefaultWritingSystem.Text;
-			if (sWithVal == null)
-				sWithVal = "";
-			tss = m_tsf.MakeString(String.Format(sFmt, sLexVal, sWithVal, StringUtils.kChHardLB), userWs);
+			string sWithVal = m_allomorph.Form.VernacularDefaultWritingSystem.Text ?? "";
+			ITsString tss = TsStringUtils.MakeString(String.Format(sFmt, sLexVal, sWithVal, StringUtils.kChHardLB), userWs);
 			m_fwTextBoxBottomMsg.Tss = tss;
 			// Do this AFTER setting the selected item, since that changes the text of the box and the needed size.
 			//m_fwTextBoxBottomMsg.AdjustForStyleSheet(this, null, m_mediator);

@@ -2,14 +2,12 @@
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
-using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Windows.Forms;
-
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.LexText.Controls;
-using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework.DetailControls;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Infrastructure;
 
 namespace SIL.FieldWorks.XWorks.LexEd
 {
@@ -53,8 +51,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <summary>
 		/// Override method to handle launching of a chooser for selecting lexical entries or senses.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		protected override void HandleChooser()
 		{
 			using (var dlg = new LinkEntryOrSenseDlg())
@@ -72,7 +68,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			CheckDisposed();
 
 			ILexSense selectedSense = obj as ILexSense;
-			IFdoReferenceCollection<IReversalIndexEntry> col = selectedSense.ReversalEntriesRC;
+			var col = selectedSense.ReferringReversalIndexEntries;
 			if (!col.Contains(m_obj as IReversalIndexEntry))
 			{
 				int h1 = m_vectorRefView.RootBox.Height;
@@ -80,7 +76,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 					m_cache.ActionHandlerAccessor, LexEdStrings.ksUndoAddRevToSense,
 					LexEdStrings.ksRedoAddRevToSense))
 				{
-					col.Add(m_obj as IReversalIndexEntry);
+					((IReversalIndexEntry)m_obj).SensesRS.Add(selectedSense);
 					helper.RollBack = false;
 				}
 				int h2 = m_vectorRefView.RootBox.Height;

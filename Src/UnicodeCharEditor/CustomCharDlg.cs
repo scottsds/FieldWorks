@@ -1,35 +1,26 @@
-// Copyright (c) 2010-2013 SIL International
+// Copyright (c) 2010-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: CustomCharDlg.cs
-// Responsibility: mcconnel
-//
-// <remarks>
-// This is a mutation of the old PUACharacterDlg.cs
-// </remarks>
 
 using System;
-using System.Drawing;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Windows.Forms;
 using System.Diagnostics;
-using SIL.FieldWorks.FwCoreDlgs;
-using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.Common.COMInterfaces;
+using System.Drawing;
+using System.Windows.Forms;
+using SIL.LCModel.Core.Text;
 using SIL.FieldWorks.Common.Controls;
-using SIL.Utils;
-using SIL.CoreImpl;
-using XCore;
+using SIL.FieldWorks.Common.FwUtils;
+using SIL.FieldWorks.FwCoreDlgs;
+using SIL.LCModel.Utils;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.UnicodeCharEditor
 {
 	/// <summary>
 	/// Dialog for editing the properties of a Unicode character.
 	/// </summary>
-	public class CustomCharDlg : Form, IFWDisposable
+	public class CustomCharDlg : Form
 	{
 		# region member variables
 
@@ -221,10 +212,8 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 
 			m_helpTopicProvider = helpTopicProvider;
 
-			if (Text == Properties.Resources.kstidAddPuaTitle)
-				m_sHelpTopic = "khtpWsAddPUAChar";
-			else if (Text == Properties.Resources.kstidModifyPuaTitle)
-				m_sHelpTopic = "khtpWsModifyPUAChar";
+			if (Text == Properties.Resources.kstidAddPuaTitle || Text == Properties.Resources.kstidModifyPuaTitle)
+				m_sHelpTopic = "khtpUnicodeEditorCharTab";
 			else
 				Debug.Assert(false, "Dialog must be set to Add or Modify (using the Modify property) before SetDialogProperties is called");
 
@@ -768,7 +757,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 			DontDisplayHiddenData(m_chBidiMirrored, m_puaChar.BidiMirrored, false);
 
 			DontDisplayHiddenData(m_cbNumericType, m_puaChar.NumericType,
-				UcdProperty.GetInstance(Icu.UNumericType.U_NT_NONE));
+				UcdProperty.GetInstance(Icu.Character.UNumericType.NONE));
 
 			DontDisplayHiddenData(m_cbCanonicalCombClass, m_puaChar.CanonicalCombiningClass ,
 				UcdProperty.GetInstance(0));
@@ -778,7 +767,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 				case 'N':
 					if( subClass == 'd' )
 					{
-						m_cbNumericType.SelectedItem = UcdProperty.GetInstance(Icu.UNumericType.U_NT_DECIMAL);
+						m_cbNumericType.SelectedItem = UcdProperty.GetInstance(Icu.Character.UNumericType.DECIMAL);
 						m_cbNumericType.Enabled = false;
 					}
 					break;
@@ -791,9 +780,9 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		/// <param name="decompostion">The hexadecimal values separated by spaces.</param>
 		/// <param name="parsedDecomposition">The decomposition as it is represented in actual unicode codepoints.</param>
 		/// <returns>A set of m_errorMessageHandler.ErrorMessages or <c>null</c> if it parses correctly.</returns>
-		private static Set<ErrorMessageHandler.ErrorMessage> ParseDecomposition(string decompostion, out string parsedDecomposition)
+		private static HashSet<ErrorMessageHandler.ErrorMessage> ParseDecomposition(string decompostion, out string parsedDecomposition)
 		{
-			var errorMessages = new Set<ErrorMessageHandler.ErrorMessage>();
+			var errorMessages = new HashSet<ErrorMessageHandler.ErrorMessage>();
 			string[] codepoints = decompostion.Split(new[]{' '});
 			parsedDecomposition = "";
 			foreach(string codepoint in codepoints)
@@ -845,7 +834,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 			// Remove the character right before the selection if it is wrong
 			if( selectionStart > 0 && !IsValid(textBox.Text[selectionStart - 1], unicodePropertyType))
 			{
-				MiscUtils.ErrorBeep();
+				FwUtils.ErrorBeep();
 				RemoveSingleChar(textBox, selectionStart - 1);
 				// Set the cursor back where it was
 				textBox.SelectionStart = selectionStart - 1;
@@ -901,7 +890,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 					// the '-' must appear at the beginning of the field (if at all)
 					if( selectionStart != 1 )
 					{
-						MiscUtils.ErrorBeep();
+						FwUtils.ErrorBeep();
 						RemoveSingleChar(textBox, selectionStart - 1);
 						// Set the cursor back where it was
 						textBox.SelectionStart = selectionStart - 1;
@@ -917,7 +906,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 					// (Having both '/' and '.' is not allowed)
 					if(nonNumericCharacterCount > 1)
 					{
-						MiscUtils.ErrorBeep();
+						FwUtils.ErrorBeep();
 						RemoveSingleChar(textBox, selectionStart - 1);
 						// Set the cursor back where it was
 						textBox.SelectionStart = selectionStart - 1;
@@ -1001,8 +990,8 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		{
 			m_errorMessageHandler.RemoveMessage(m_txtNumericValue);
 			bool digit = true;
-			if(m_cbNumericType.SelectedItem == UcdProperty.GetInstance(Icu.UNumericType.U_NT_NONE) ||
-				m_cbNumericType.SelectedItem == UcdProperty.GetInstance(Icu.UNumericType.U_NT_NUMERIC))
+			if(m_cbNumericType.SelectedItem == UcdProperty.GetInstance(Icu.Character.UNumericType.NONE) ||
+				m_cbNumericType.SelectedItem == UcdProperty.GetInstance(Icu.Character.UNumericType.NUMERIC))
 				digit = false;
 			if(ValidNumeric(m_txtNumericValue.Text, digit).Count != 0)
 				m_errorMessageHandler.AddStar(m_txtNumericValue);
@@ -1015,10 +1004,10 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		private void CheckNumericLeave()
 		{
 			bool digit = true;
-			if(m_puaChar.NumericType == UcdProperty.GetInstance(Icu.UNumericType.U_NT_NONE) ||
-				m_puaChar.NumericType == UcdProperty.GetInstance(Icu.UNumericType.U_NT_NUMERIC))
+			if(m_puaChar.NumericType == UcdProperty.GetInstance(Icu.Character.UNumericType.NONE) ||
+				m_puaChar.NumericType == UcdProperty.GetInstance(Icu.Character.UNumericType.NUMERIC))
 					digit = false;
-				Set<ErrorMessageHandler.ErrorMessage> errorMessages = ValidNumeric(m_txtNumericValue.Text, digit);
+				HashSet<ErrorMessageHandler.ErrorMessage> errorMessages = ValidNumeric(m_txtNumericValue.Text, digit);
 			if( errorMessages.Count != 0)
 				m_errorMessageHandler.AddMessage(m_txtNumericValue, errorMessages);
 		}
@@ -1033,15 +1022,18 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		/// <returns></returns>
 		private static ErrorMessageHandler.ErrorMessage ValidCodepoint(string codepoint, bool lessStrict)
 		{
-			if( codepoint.Length == 0 && lessStrict )
+			if( string.IsNullOrEmpty(codepoint) && lessStrict )
 				return ErrorMessageHandler.ErrorMessage.none;
 			if( codepoint.Length < 4)
 				return ErrorMessageHandler.ErrorMessage.shortCodepoint;
 			if( codepoint.Length > 6)
 				return ErrorMessageHandler.ErrorMessage.longCodepoint;
-			if (codepoint.Length > 3 && Convert.ToInt32(codepoint, 16) == 0)
+			var codepointValue = Convert.ToInt32(codepoint, 16);
+			if( codepointValue > 0x10FFFF || codepointValue < 0)
+				return ErrorMessageHandler.ErrorMessage.outsideRange;
+			if (codepointValue == 0)
 				return ErrorMessageHandler.ErrorMessage.zeroCodepoint;
-			if (Icu.IsSurrogate(codepoint))
+			if (CustomIcu.IsSurrogate(codepoint))
 				return ErrorMessageHandler.ErrorMessage.inSurrogateRange;
 			return ErrorMessageHandler.ErrorMessage.none;
 		}
@@ -1052,9 +1044,9 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		/// <param name="numeric"></param>
 		/// <param name="isDigit">If the character is a digit or decimal digit.</param>
 		/// <returns></returns>
-		private static Set<ErrorMessageHandler.ErrorMessage> ValidNumeric(string numeric, bool isDigit)
+		private static HashSet<ErrorMessageHandler.ErrorMessage> ValidNumeric(string numeric, bool isDigit)
 		{
-			var errorMessages = new Set<ErrorMessageHandler.ErrorMessage>();
+			var errorMessages = new HashSet<ErrorMessageHandler.ErrorMessage>();
 			if(isDigit)
 			{
 				// Don't allow any non-numerics in digit numeric values.
@@ -1096,7 +1088,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 		private ErrorMessageHandler.ErrorMessage CheckEmptyDecomposition()
 		{
 			if( m_cbCompatabilityDecomposition.SelectedItem !=
-				UcdProperty.GetInstance(Icu.UDecompositionType.U_DT_NONE) &&
+				UcdProperty.GetInstance(Icu.Character.UDecompositionType.NONE) &&
 				CodePointMatches(m_txtDecomposition)
 				)
 			{
@@ -1223,7 +1215,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 			//Parse the display string so that the user can see what codepoints they have entered.
 			// Display an error star if any errors are encountered in the process.
 			string parsedDecomposition;
-			Set<ErrorMessageHandler.ErrorMessage> errorMessages = ParseDecomposition(m_txtDecomposition.Text,
+			HashSet<ErrorMessageHandler.ErrorMessage> errorMessages = ParseDecomposition(m_txtDecomposition.Text,
 				out parsedDecomposition);
 			if (errorMessages.Count == 0)
 			{
@@ -1250,7 +1242,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 			m_puaChar.Decomposition = m_txtDecomposition.Text;
 			// Display text discribing any errors in the decomposition string syntax.
 			string parsedDecomposition;
-			Set<ErrorMessageHandler.ErrorMessage> errorMessages = ParseDecomposition(m_txtDecomposition.Text,
+			HashSet<ErrorMessageHandler.ErrorMessage> errorMessages = ParseDecomposition(m_txtDecomposition.Text,
 				out parsedDecomposition);
 			m_errorMessageHandler.AddMessage(m_txtDecomposition, errorMessages);
 
@@ -1313,7 +1305,7 @@ namespace SIL.FieldWorks.UnicodeCharEditor
 			m_lblPUADisplay.Text = PUACharacter.CodepointAsString(m_txtCodepoint.Text);
 			m_lblWarning.Text = "";
 
-			// Don't bother decoding the text if the text box was disabled, becuase then the
+			// Don't bother decoding the text if the text box was disabled, because then the
 			// user didn't type it.
 			if(m_txtCodepoint.Enabled == false)
 				return;

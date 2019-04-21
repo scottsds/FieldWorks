@@ -4,12 +4,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.FieldWorks.Common.ViewsInterfaces;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using XCore;
 using SIL.Utils;
 
@@ -20,8 +20,6 @@ namespace SIL.FieldWorks.XWorks
 	/// To create a macro, make an Assembly with a name starting with "Macro" that implements IFlexMacro, build it,
 	/// and drop the DLL in the FieldWorks root directory.
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="m_mediator is a reference")]
 	public class MacroListener : IxCoreColleague
 	{
 		private Mediator m_mediator;
@@ -186,7 +184,7 @@ namespace SIL.FieldWorks.XWorks
 			// for safety require selection to be in a single property.
 			if (hvoA != hvoE || flid != flidE || ws != wsE)
 				return false;
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			obj = cache.ServiceLocator.ObjectRepository.GetObject(hvoA);
 			start = Math.Min(ichA, ichE);
 			length = Math.Max(ichA, ichE) - start;

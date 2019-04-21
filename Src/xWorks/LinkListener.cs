@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -11,9 +11,8 @@ using System.Windows.Forms;
 using System.Xml;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.FdoUi;
-using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks
@@ -34,7 +33,7 @@ namespace SIL.FieldWorks.XWorks
 	/// See the class comment on FwLinkArgs for details on how all the parts of hyperlinking work.
 	/// </summary>
 	[XCore.MediatorDispose]
-	public class LinkListener : IxCoreColleague, IFWDisposable
+	public class LinkListener : IxCoreColleague, IDisposable
 	{
 		const int kmaxDepth = 50;		// Limit the stacks to 50 elements (LT-729).
 		protected Mediator m_mediator;
@@ -234,7 +233,7 @@ namespace SIL.FieldWorks.XWorks
 			try
 			{
 				var fwargs = new FwAppArgs(new[] {url});
-				FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+				LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 				if (SameDatabase(fwargs, cache))
 				{
 					OnFollowLink(fwargs);
@@ -248,7 +247,7 @@ namespace SIL.FieldWorks.XWorks
 			return true;
 		}
 
-		private bool SameDatabase(FwAppArgs fwargs, FdoCache cache)
+		private bool SameDatabase(FwAppArgs fwargs, LcmCache cache)
 		{
 			return fwargs.Database == "this$" ||
 				fwargs.Database.ToLowerInvariant() == cache.ProjectId.Name.ToLowerInvariant()
@@ -336,7 +335,7 @@ namespace SIL.FieldWorks.XWorks
 			CheckDisposed();
 			if (m_currentContext != null)
 			{
-				FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+				LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 				var args = new FwAppArgs(cache.ProjectId.Handle,
 					m_currentContext.ToolName, m_currentContext.TargetGuid);
 				ClipboardUtils.SetDataObject(args.ToString(), true);
@@ -413,7 +412,7 @@ namespace SIL.FieldWorks.XWorks
 		public bool OnTestFollowLink(object unused)
 		{
 			CheckDisposed();
-			FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+			LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 			Guid[] guids = (from entry in cache.LanguageProject.LexDbOA.Entries select entry.Guid).ToArray();
 			m_mediator.SendMessage("FollowLink", new FwLinkArgs("lexiconEdit", guids[guids.Length - 1]));
 			return true;
@@ -445,7 +444,7 @@ namespace SIL.FieldWorks.XWorks
 				{
 					// Need some smarts here. The link creator was not sure what tool to use.
 					// The object may also be a child we don't know how to jump to directly.
-					var cache = m_propertyTable.GetValue<FdoCache>("cache");
+					var cache = m_propertyTable.GetValue<LcmCache>("cache");
 					ICmObject target;
 					if (!cache.ServiceLocator.ObjectRepository.TryGetObject(m_lnkActive.TargetGuid, out target))
 						return false; // or message?
@@ -519,7 +518,7 @@ namespace SIL.FieldWorks.XWorks
 				// or more likely, when the HVO was set to -1.
 				if (m_lnkActive.TargetGuid != Guid.Empty)
 				{
-					FdoCache cache = m_propertyTable.GetValue<FdoCache>("cache");
+					LcmCache cache = m_propertyTable.GetValue<LcmCache>("cache");
 					ICmObject obj = cache.ServiceLocator.GetInstance<ICmObjectRepository>().GetObject(m_lnkActive.TargetGuid);
 					if (obj is IReversalIndexEntry && m_lnkActive.ToolName == "reversalToolEditComplete")
 					{

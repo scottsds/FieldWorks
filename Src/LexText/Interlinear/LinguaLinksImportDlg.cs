@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -6,20 +6,19 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows.Forms;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.LexText.Controls;
 using SIL.FieldWorks.Resources;
 using SIL.FieldWorks.XWorks;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.IText
@@ -55,7 +54,7 @@ namespace SIL.FieldWorks.IText
 	/// <summary>
 	/// Summary description for IFwImportDialog.
 	/// </summary>
-	public class LinguaLinksImportDlg : Form, IFWDisposable, IFwExtension
+	public class LinguaLinksImportDlg : Form, IFwExtension
 	{
 		public const int kLlName = 0;
 		public const int kFwName = 1;
@@ -68,7 +67,7 @@ namespace SIL.FieldWorks.IText
 		/// </summary>
 		private System.ComponentModel.Container components = null;
 
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		private System.Windows.Forms.LinkLabel linkLabel2;
 		private System.Windows.Forms.Label label1;
 		private System.Windows.Forms.TextBox m_LinguaLinksXmlFileName;
@@ -185,7 +184,7 @@ namespace SIL.FieldWorks.IText
 		/// <param name="cache"></param>
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
-		public void Init(FdoCache cache, XCore.Mediator mediator, PropertyTable propertyTable)
+		public void Init(LcmCache cache, XCore.Mediator mediator, PropertyTable propertyTable)
 		{
 			CheckDisposed();
 
@@ -246,8 +245,6 @@ namespace SIL.FieldWorks.IText
 		/// Required method for Designer support - do not modify
 		/// the contents of this method with the code editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "TODO-Linux: LinkLabel.TabStop is missing from Mono")]
 		private void InitializeComponent()
 		{
 			System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LinguaLinksImportDlg));
@@ -861,7 +858,7 @@ namespace SIL.FieldWorks.IText
 			lvItem = listViewMapping.Items[selIndex];
 			IApp app = m_propertyTable.GetValue<IApp>("App");
 			using (LexImportWizardLanguage dlg = new LexImportWizardLanguage(m_cache,
-					m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), app, FontHeightAdjuster.StyleSheetFromPropertyTable(m_propertyTable)))
+				m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), app))
 			{
 				llName = lvItem.Text;
 				fwName = lvItem.SubItems[1].Text;

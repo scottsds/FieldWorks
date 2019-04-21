@@ -1,31 +1,19 @@
-// Copyright (c) 2005-2013 SIL International
+// Copyright (c) 2005-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ButtonLauncher.cs
-// Responsibility: RandyR
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
 
 using System;
-using System.Collections;
 using System.ComponentModel;
-using System.Drawing;
-using System.Data;
 using System.Windows.Forms;
 using System.Diagnostics;
 using System.Xml;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
 using XCore;
-using System.Diagnostics.CodeAnalysis;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
 {
-	public class ButtonLauncher : UserControl, IFWDisposable, INotifyControlInCurrentSlice
+	public class ButtonLauncher : UserControl, INotifyControlInCurrentSlice
 	{
 		#region event handler declarations
 
@@ -35,7 +23,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		#region Data Members
 
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		protected ICmObject m_obj;
 		protected int m_flid;
 		protected string m_fieldName;
@@ -55,9 +43,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		private IContainer components;
 
 		#region Properties
-
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "parent is a reference")]
 		protected Slice Slice
 		{
 			get
@@ -149,7 +134,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		/// <param name="propertyTable"></param>
 		/// <param name="displayNameProperty"></param>
 		/// <param name="displayWs"></param>
-		public virtual void Initialize(FdoCache cache, ICmObject obj, int flid, string fieldName,
+		public virtual void Initialize(LcmCache cache, ICmObject obj, int flid, string fieldName,
 			IPersistenceProvider persistProvider, Mediator mediator, PropertyTable propertyTable, string displayNameProperty, string displayWs)
 		{
 			Debug.Assert(cache != null);
@@ -209,16 +194,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		#endregion // Construction, Initialization, and Disposing
 
-		#region IFWDisposable
-		//// use the Control IsDisposed method
-		///// <summary>
-		///// See if the object has been disposed.
-		///// </summary>
-		//public bool IsDisposed
-		//{
-		//    get { return m_isDisposed; }
-		//}
-
 		/// <summary>
 		/// Throw if the IsDisposed property is true
 		/// </summary>
@@ -227,8 +202,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			if (IsDisposed)
 				throw new ObjectDisposedException("ButtonLauncher", "This object is being used after it has been disposed: this is an Error.");
 		}
-
-		#endregion // IFWDisposable
 
 		/// <summary>
 		/// Set this to create a target object if necessary when the user clicks the chooser button.

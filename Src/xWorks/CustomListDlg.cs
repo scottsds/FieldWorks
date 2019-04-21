@@ -1,26 +1,21 @@
-// Copyright (c) 2010-2013 SIL International
+// Copyright (c) 2010-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: CustomListDlg.cs
-// Responsibility: GordonM
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using XCore;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using System.Collections.Generic;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -29,13 +24,13 @@ namespace SIL.FieldWorks.XWorks
 	/// Dialog for adding TopicListEditor-like custom lists to a Fieldworks project.
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	public partial class CustomListDlg : Form, IFWDisposable
+	public partial class CustomListDlg : Form
 	{
 		protected string s_helpTopic = "khtpCustomLists";
 		private HelpProvider m_helpProvider;
 		protected readonly Mediator m_mediator;
 		protected readonly PropertyTable m_propertyTable;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		protected bool m_finSetup;
 		protected LabeledMultiStringControl m_lmscListName;
 		protected LabeledMultiStringControl m_lmscDescription;
@@ -282,7 +277,7 @@ namespace SIL.FieldWorks.XWorks
 				for (var i = 0; i < cws; i++)
 				{
 					var curWs = m_lmscListName.Ws(i);
-					var emptyStr = Cache.TsStrFactory.EmptyString(curWs).Text;
+					var emptyStr = TsStringUtils.EmptyString(curWs).Text;
 					var lmscName = m_lmscListName.Value(curWs).Text;
 					if (repo.AllInstances().Where(
 						list => list.Name.get_String(curWs).Text != emptyStr
@@ -325,14 +320,14 @@ namespace SIL.FieldWorks.XWorks
 		/// <summary>
 		/// FDO cache. Use setter ONLY in tests
 		/// </summary>
-		protected FdoCache Cache
+		protected LcmCache Cache
 		{
 			get
 			{
 				if (m_mediator == null && m_cache == null)
 					return null;
 				if (m_cache == null)
-					m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+					m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 				return m_cache;
 			}
 			set
@@ -348,7 +343,7 @@ namespace SIL.FieldWorks.XWorks
 			ShowHelp.ShowHelpTopic(m_propertyTable.GetValue<IHelpTopicProvider>("HelpTopicProvider"), s_helpTopic);
 		}
 
-		#region Implementation of IFWDisposable
+		#region Implementation of IDisposable
 
 		/// <summary>
 		/// This method throws an ObjectDisposedException if IsDisposed returns true.
@@ -810,7 +805,7 @@ namespace SIL.FieldWorks.XWorks
 				for (var i = 0; i < cws; i++)
 				{
 					var curWs = m_lmscListName.Ws(i);
-					var emptyStr = Cache.TsStrFactory.EmptyString(curWs).Text;
+					var emptyStr = TsStringUtils.EmptyString(curWs).Text;
 					var lmscName = m_lmscListName.Value(curWs).Text;
 					if (repo.AllInstances().Where(
 						list => list != m_curList
@@ -840,9 +835,6 @@ namespace SIL.FieldWorks.XWorks
 			for (var i = 0; i < cws; i++)
 			{
 				var curWs = msControl.Ws(i);
-				//if (oldStrings.get_String(curWs).Text != Cache.TsStrFactory.EmptyString(curWs).Text
-				//    && oldStrings.get_String(curWs).Text != msControl.Value(curWs).Text)
-				//    return true;
 				if (oldStrings.get_String(curWs).Text != msControl.Value(curWs).Text)
 					return true;
 			}

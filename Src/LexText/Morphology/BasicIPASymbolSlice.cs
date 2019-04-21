@@ -7,11 +7,11 @@ using System.IO;
 using System.Xml.Linq;
 using System.Xml.XPath;
 
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Framework.DetailControls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.Utils;
 using XCore;
 
@@ -39,7 +39,7 @@ namespace SIL.FieldWorks.XWorks.MorphologyEditor
 		/// <param name="obj"></param>
 		/// <param name="persistenceProvider"></param>
 		/// <param name="ws"></param>
-		public BasicIPASymbolSlice(FdoCache cache, string editor, int flid,
+		public BasicIPASymbolSlice(LcmCache cache, string editor, int flid,
 						System.Xml.XmlNode node, ICmObject obj,
 						IPersistenceProvider persistenceProvider, int ws)
 			: base(obj, flid, ws)

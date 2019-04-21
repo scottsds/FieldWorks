@@ -1,13 +1,7 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: MGA.cs
-// Responsibility: Andy Black
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
 using System.Drawing;
 using System.ComponentModel;
@@ -15,9 +9,8 @@ using System.Windows.Forms;
 using System.IO;
 using System.Text;
 using System.Xml;
-using SIL.FieldWorks.FDO;
-using XCore;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Utils;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Controls;
 
@@ -26,11 +19,11 @@ namespace  SIL.FieldWorks.LexText.Controls.MGA
 	/// <summary>
 	/// Base class for MGAHtmlHelpDialog. Can be used standalone to show dialog without html help.
 	/// </summary>
-	public class MGADialog : Form, IFWDisposable
+	public class MGADialog : Form
 	{
 		#region Member variables
 		private int m_panelBottomHeight = 0;
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 		private readonly IHelpTopicProvider m_helpTopicProvider;
 		private Button buttonInsert;
 		private Button buttonRemove;
@@ -99,7 +92,7 @@ namespace  SIL.FieldWorks.LexText.Controls.MGA
 		/// <param name="helpTopicProvider"></param>
 		/// <param name="sMorphemeForm">The s morpheme form.</param>
 		/// ------------------------------------------------------------------------------------
-		public MGADialog(FdoCache cache, IHelpTopicProvider helpTopicProvider, string sMorphemeForm)
+		public MGADialog(LcmCache cache, IHelpTopicProvider helpTopicProvider, string sMorphemeForm)
 		{
 			m_cache = cache;
 			m_helpTopicProvider = helpTopicProvider;
@@ -245,8 +238,30 @@ namespace  SIL.FieldWorks.LexText.Controls.MGA
 		public void OnInsertButtonClick(object obj, EventArgs ea)
 		{
 			CheckDisposed();
+			ProcessAnySelectedNodes(treeViewGlossListItem.Nodes);
+		}
 
-			MasterInflectionFeature mif = (MasterInflectionFeature)treeViewGlossListItem.SelectedNode.Tag;
+		private void ProcessAnySelectedNodes(TreeNodeCollection nodes)
+		{
+			foreach (TreeNode node in nodes)
+			{
+				if (node.Nodes.Count > 0)
+				{
+					ProcessAnySelectedNodes(node.Nodes);
+				}
+				else
+				{
+					if (node.Checked)
+					{
+						InsertSelectedItem(node);
+					}
+				}
+			}
+		}
+
+		private void InsertSelectedItem(TreeNode selectedNode)
+		{
+			MasterInflectionFeature mif = (MasterInflectionFeature)selectedNode.Tag;
 			if (mif == null)
 				return; // just to be safe
 			GlossListBoxItem glbiNew = new GlossListBoxItem(m_cache, mif.Node,
@@ -269,6 +284,7 @@ namespace  SIL.FieldWorks.LexText.Controls.MGA
 			EnableMoveUpDownButtons();
 			ShowGloss();
 		}
+
 		void OnModifyButtonClick(object obj, EventArgs ea)
 		{
 			MessageBox.Show(MGAStrings.ksNoModifyButtonYet);

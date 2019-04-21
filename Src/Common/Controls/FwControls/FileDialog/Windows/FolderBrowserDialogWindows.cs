@@ -1,11 +1,6 @@
-// --------------------------------------------------------------------------------------------
-// <copyright from='2012' to='2012' company='SIL International'>
-// Copyright (c) 2012-2015 SIL International
+// Copyright (c) 2011-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
-// (http://www.gnu.org/licenses/lgpl-2.1.html).
-// </copyright>
-// --------------------------------------------------------------------------------------------
-#if !__MonoCS__
+// (http://www.gnu.org/licenses/lgpl-2.1.html)
 using System;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.Controls.FileDialog;
@@ -104,4 +99,3 @@ namespace SIL.FieldWorks.Common.Controls.FileDialog.Windows
 		#endregion
 	}
 }
-#endif

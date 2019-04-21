@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
@@ -179,7 +178,7 @@ namespace XCore
 			{
 				CheckDisposed();
 
-				return XmlUtils.GetManditoryAttributeValue( m_configurationParameters, "area");
+				return XmlUtils.GetMandatoryAttributeValue( m_configurationParameters, "area");
 			}
 		}
 
@@ -187,8 +186,6 @@ namespace XCore
 
 		#region IxCoreCtrlTabProvider implementation
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "result is a reference")]
 		public Control PopulateCtrlTabTargetCandidateList(List<Control> targetCandidates)
 		{
 			if (targetCandidates == null)
@@ -225,8 +222,6 @@ namespace XCore
 		/// <summary>
 		/// Initialize this has an IxCoreColleague
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		public void Init(Mediator mediator, PropertyTable propertyTable, XmlNode configurationParameters)
 		{
 			CheckDisposed();
@@ -364,8 +359,8 @@ namespace XCore
 			if (dynLoaderNode == null)
 				throw new ArgumentException("Required 'dynamicloaderinfo' XML node not found, while trying to make control for MultiPane.", "configuration");
 
-			string contentAssemblyPath = XmlUtils.GetManditoryAttributeValue(dynLoaderNode, "assemblyPath");
-			string contentClass = XmlUtils.GetManditoryAttributeValue(dynLoaderNode, "class");
+			string contentAssemblyPath = XmlUtils.GetMandatoryAttributeValue(dynLoaderNode, "assemblyPath");
+			string contentClass = XmlUtils.GetMandatoryAttributeValue(dynLoaderNode, "class");
 			try
 			{
 				Control subControl = (Control)DynamicLoader.CreateObject(contentAssemblyPath, contentClass);

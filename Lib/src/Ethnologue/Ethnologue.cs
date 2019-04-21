@@ -1,19 +1,10 @@
-﻿// ---------------------------------------------------------------------------------------------
-// Copyright (c) 2009-2015 SIL International
+﻿// Copyright (c) 2009-2015 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: Ethnologue.cs
-// Responsibility:
-//
-// <remarks>
-// </remarks>
-// ---------------------------------------------------------------------------------------------
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.IO;
 using System.Text;
 using Microsoft.Win32;
@@ -152,9 +143,7 @@ namespace SIL.Ethnologue
 		{
 			List<string[]> rgCountryCodes = new List<string[]>();
 			string sFile = Path.Combine(InstallFolder, "CountryCodes.tab");
-			// Bizarrely, while the other two files we get from the Ethnologue are UTF8, this one is not.
-			// See e.g. Cote d'Ivoire -- the first o has an accent that doesn't come out right read as UTF8
-			using (TextReader rdr = new StreamReader(sFile, Encoding.GetEncoding(1252)))
+			using (TextReader rdr = new StreamReader(sFile, Encoding.UTF8))
 			{
 				string sLine = rdr.ReadLine();
 				if (sLine == "CountryID	Name	Area")
@@ -229,7 +218,7 @@ namespace SIL.Ethnologue
 		private List<string[]> LoadISO_639_3()
 		{
 			List<string[]> rgIsoData = new List<string[]>();
-			string sFile = Path.Combine(InstallFolder, "iso-639-3_20090210.tab");
+			string sFile = Path.Combine(InstallFolder, "iso-639-3_20180123.tab");
 			using (TextReader rdr = new StreamReader(sFile, Encoding.UTF8))
 			{
 				string sLine = rdr.ReadLine();

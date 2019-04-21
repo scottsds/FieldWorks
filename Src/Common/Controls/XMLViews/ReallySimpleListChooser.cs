@@ -1,15 +1,8 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: ReallySimpleListChooser.cs
-// Responsibility:
-// Last reviewed:
-//
-// <remarks>
-// </remarks>
+
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Collections;
 using System.Collections.Generic;
@@ -22,19 +15,24 @@ using System.Text;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.FieldWorks.Common.ViewsInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.LCModel.Utils;
+using SIL.PlatformUtilities;
+using SIL.Utils;
+using SIL.Windows.Forms.HtmlBrowser;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Controls
 {
 	/// <summary></summary>
-	public class ReallySimpleListChooser : Form, IFWDisposable
+	public class ReallySimpleListChooser : Form
 	{
 		/// <summary></summary>
 		protected ObjectLabel m_chosenLabel;
@@ -68,7 +66,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary></summary>
 		protected Label m_lblExplanation;
 		/// <summary></summary>
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 
 		/// <summary>
 		/// True to prevent choosing more than one item.
@@ -123,11 +121,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <summary></summary>
 		protected IVwStylesheet m_stylesheet;
 
-#if __MonoCS__
-		private Gecko.GeckoWebBrowser m_webBrowser;
-#else
-		private WebBrowser m_webBrowser;
-#endif
+		private XWebBrowser m_webBrowser;
 		private Panel m_mainPanel;
 		private Button m_helpBrowserButton;
 		private SplitContainer m_splitContainer;
@@ -150,6 +144,7 @@ namespace SIL.FieldWorks.Common.Controls
 		private CheckBox m_displayUsageCheckBox;
 
 		private ToolStripButton m_printButton;
+		private Dictionary<char, string> s_xmlCharacterSubstitutions;
 
 		/// <summary>
 		/// Check to see if the object has been disposed.
@@ -215,7 +210,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="nullLabel">The null label.</param>
 		/// <param name="stylesheet">The stylesheet.</param>
 		/// ------------------------------------------------------------------------------------
-		public ReallySimpleListChooser(FdoCache cache, IHelpTopicProvider helpTopicProvider,
+		public ReallySimpleListChooser(LcmCache cache, IHelpTopicProvider helpTopicProvider,
 			IPersistenceProvider persistProvider, IEnumerable<ObjectLabel> labels,
 			ICmObject currentObj, string fieldName, string nullLabel, IVwStylesheet stylesheet)
 		{
@@ -235,7 +230,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="fieldName">the user-readable name of the field that is being edited</param>
 		/// <param name="nullLabel">The null label.</param>
 		/// ------------------------------------------------------------------------------------
-		public ReallySimpleListChooser(FdoCache cache, IHelpTopicProvider helpTopicProvider,
+		public ReallySimpleListChooser(LcmCache cache, IHelpTopicProvider helpTopicProvider,
 			IPersistenceProvider persistProvider, IEnumerable<ObjectLabel> labels,
 			ICmObject currentObj, string fieldName, string nullLabel)
 		{
@@ -253,7 +248,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="currentObj">The current object.</param>
 		/// <param name="fieldName">the user-readable name of the field that is being edited</param>
 		/// ------------------------------------------------------------------------------------
-		public ReallySimpleListChooser(FdoCache cache, IHelpTopicProvider helpTopicProvider,
+		public ReallySimpleListChooser(LcmCache cache, IHelpTopicProvider helpTopicProvider,
 			IPersistenceProvider persistProvider, IEnumerable<ObjectLabel> labels,
 			ICmObject currentObj, string fieldName)
 		{
@@ -265,7 +260,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// Initializes a new instance of the <see cref="ReallySimpleListChooser"/> class.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		private void Init(FdoCache cache, IHelpTopicProvider helpTopicProvider,
+		private void Init(LcmCache cache, IHelpTopicProvider helpTopicProvider,
 			IPersistenceProvider persistProvider, string fieldName,
 			IEnumerable<ObjectLabel> labels, ICmObject currentObj, string nullLabel,
 			IVwStylesheet stylesheet)
@@ -379,7 +374,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// ------------------------------------------------------------------------------------
 		public ReallySimpleListChooser(IPersistenceProvider persistProvider,
-			IEnumerable<ObjectLabel> labels, string fieldName, FdoCache cache,
+			IEnumerable<ObjectLabel> labels, string fieldName, LcmCache cache,
 			IEnumerable<ICmObject> chosenObjs, IHelpTopicProvider helpTopicProvider) :
 			this(persistProvider, labels, fieldName, cache, chosenObjs, IsListSorted(labels), helpTopicProvider)
 		{
@@ -399,7 +394,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// ------------------------------------------------------------------------------------
 		public ReallySimpleListChooser(IPersistenceProvider persistProvider,
-			IEnumerable<ObjectLabel> labels, string fieldName, FdoCache cache,
+			IEnumerable<ObjectLabel> labels, string fieldName, LcmCache cache,
 			IEnumerable<ICmObject> chosenObjs, bool fSortLabels, IHelpTopicProvider helpTopicProvider)
 			: this(persistProvider, fieldName, cache, chosenObjs, helpTopicProvider)
 		{
@@ -432,7 +427,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// ------------------------------------------------------------------------------------
 		protected ReallySimpleListChooser(IPersistenceProvider persistProvider,
-			string fieldName, FdoCache cache, IEnumerable<ICmObject> chosenObjs,
+			string fieldName, LcmCache cache, IEnumerable<ICmObject> chosenObjs,
 			IHelpTopicProvider helpTopicProvider)
 		{
 			m_cache = cache;
@@ -837,8 +832,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="configNode"></param>
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		public void InitializeExtras(XmlNode configNode, Mediator mediator, PropertyTable propertyTable)
 		{
 			CheckDisposed();
@@ -953,8 +946,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// for my liking, but it's the only way I could think of to make this adaptable to
 		/// ongoing growth of the system.
 		/// </remarks>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private XmlNode GenerateChooserInfoForCustomNode(XmlNode configNode)
 		{
 			string editor = XmlUtils.GetAttributeValue(configNode, "editor");
@@ -1001,11 +992,13 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 			if (!String.IsNullOrEmpty(sTool))
 			{
+				sTool = XmlUtils.MakeSafeXmlAttribute(sTool);
 				StringBuilder bldr = new StringBuilder();
 				bldr.AppendLine("<chooserInfo>");
 				string label = list.Name.UserDefaultWritingSystem.Text;
 				if (String.IsNullOrEmpty(label) || label == list.Name.NotFoundTss.Text)
 					label = list.Name.BestAnalysisVernacularAlternative.Text;
+				label = XmlUtils.MakeSafeXmlAttribute(label);
 				bldr.AppendFormat("<chooserLink type=\"goto\" label=\"Edit the {0} list\" tool=\"{1}\"/>",
 					label, sTool);
 				bldr.AppendLine();
@@ -1017,8 +1010,6 @@ namespace SIL.FieldWorks.Common.Controls
 			return chooserNode;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private string ScanToolsAndClerks(XmlNode windowConfig, string listOwnerClass, string listField)
 		{
 			foreach (XmlNode xnItem in windowConfig.SelectNodes("/window/lists/list/item"))
@@ -1063,40 +1054,45 @@ namespace SIL.FieldWorks.Common.Controls
 			}
 
 			// only create the web browser if we needed, because this control is pretty resource intensive
-#if __MonoCS__
-			m_webBrowser = new Gecko.GeckoWebBrowser
+			m_webBrowser = new XWebBrowser
 			{
-				Dock = DockStyle.Fill,
-				TabIndex = 1,
-				MinimumSize = new Size(20, 20),
-				NoDefaultContextMenu = true
+				Dock = DockStyle.Fill
 			};
-#else
-			m_webBrowser = new WebBrowser
+
+			if (Platform.IsMono)
 			{
-				Dock = DockStyle.Fill,
-				IsWebBrowserContextMenuEnabled = false,
-				WebBrowserShortcutsEnabled = false,
-				AllowWebBrowserDrop = false
-			};
-#endif
+				var browser = m_webBrowser.NativeBrowser as Gecko.GeckoWebBrowser;
+				browser.TabIndex = 1;
+				browser.MinimumSize = new Size(20, 20);
+				browser.NoDefaultContextMenu = true;
+			}
+			else
+			{
+				var browser = m_webBrowser.NativeBrowser as WebBrowser;
+				browser.IsWebBrowserContextMenuEnabled = false;
+				browser.WebBrowserShortcutsEnabled = false;
+				browser.AllowWebBrowserDrop = false;
+			}
 			m_helpBrowserButton.Visible = true;
 			m_viewExtrasPanel.Visible = true;
-#if !__MonoCS__
-			m_webBrowser.Navigated += m_webBrowser_Navigated;
-#endif
+			if (!Platform.IsMono)
+				m_webBrowser.Navigated += m_webBrowser_Navigated;
+
 			m_webBrowser.CanGoBackChanged += m_webBrowser_CanGoBackChanged;
 			m_webBrowser.CanGoForwardChanged += m_webBrowser_CanGoForwardChanged;
 			m_splitContainer.Panel2.Controls.Add(m_webBrowser);
 
 			m_backButton = new ToolStripButton(null, m_imageList.Images[2], m_backButton_Click) {Enabled = false};
 			m_forwardButton = new ToolStripButton(null, m_imageList.Images[3], m_forwardButton_Click) {Enabled = false};
-#if __MonoCS__
-			m_helpBrowserStrip = new ToolStrip(m_backButton, m_forwardButton) { Dock = DockStyle.Top };
-#else
-			m_printButton = new ToolStripButton(null, m_imageList.Images[4], m_printButton_Click);
-			m_helpBrowserStrip = new ToolStrip(m_backButton, m_forwardButton, m_printButton) { Dock = DockStyle.Top };
-#endif
+
+			if (Platform.IsMono)
+				m_helpBrowserStrip = new ToolStrip(m_backButton, m_forwardButton) { Dock = DockStyle.Top };
+			else
+			{
+				m_printButton = new ToolStripButton(null, m_imageList.Images[4], m_printButton_Click);
+				m_helpBrowserStrip = new ToolStrip(m_backButton, m_forwardButton, m_printButton) { Dock = DockStyle.Top };
+			}
+
 			m_splitContainer.Panel2.Controls.Add(m_helpBrowserStrip);
 
 			if (splitterDistance < m_splitContainer.Width)
@@ -1200,30 +1196,37 @@ namespace SIL.FieldWorks.Common.Controls
 				if (pos != null)
 				{
 					string helpFile = pos.OwningList.HelpFile;
-#if __MonoCS__
-					// Force Linux to use combined Ocm/OcmFrame files
-					if (helpFile == "Ocm.chm")
-						helpFile = "OcmFrame";
-#endif
+					if (!Platform.IsWindows)
+					{
+						// Force Linux to use combined Ocm/OcmFrame files
+						if (helpFile == "Ocm.chm")
+							helpFile = "OcmFrame";
+					}
 					string helpTopic = pos.HelpId;
 					if (!string.IsNullOrEmpty(helpFile) && !string.IsNullOrEmpty(helpTopic))
 					{
 						string curHelpTopic = GetHelpTopic(m_webBrowser.Url);
-						if (curHelpTopic == null || helpTopic.ToLowerInvariant() != curHelpTopic.ToLowerInvariant())
+						if (curHelpTopic == null || helpTopic.ToLowerInvariant() !=
+							curHelpTopic.ToLowerInvariant())
 						{
 							if (!Path.IsPathRooted(helpFile))
 							{
 								// Helps are part of the installed code files.  See FWR-1002.
-								string helpsPath = Path.Combine(FwDirectoryFinder.CodeDirectory, "Helps");
+								string helpsPath = Path.Combine(FwDirectoryFinder.CodeDirectory,
+									"Helps");
 								helpFile = Path.Combine(helpsPath, helpFile);
 							}
-#if __MonoCS__
-							// remove file extension, we need folder of the same name with the htm files
-							helpFile = helpFile.Replace(".chm","");
-							string url = string.Format("{0}/{1}.htm", helpFile, helpTopic.ToLowerInvariant());
-#else
-							string url = string.Format("its:{0}::/{1}.htm", helpFile, helpTopic);
-#endif
+
+							string url;
+							if (Platform.IsWindows)
+								url = string.Format("its:{0}::/{1}.htm", helpFile, helpTopic);
+							else
+							{
+								// remove file extension, we need folder of the same name with the htm files
+								helpFile = helpFile.Replace(".chm", "");
+								url = string.Format("{0}/{1}.htm", helpFile, helpTopic.ToLowerInvariant());
+							}
+
 							m_webBrowser.Navigate(url);
 						}
 					}
@@ -1244,17 +1247,12 @@ namespace SIL.FieldWorks.Common.Controls
 			if (url == null)
 				return null;
 			string urlStr = url.ToString();
-#if __MonoCS__
-			int startIndex = urlStr.IndexOf("OcmFrame/");
+			var prefix = Platform.IsWindows ? "::/" : "OcmFrame/";
+			var startIndex = urlStr.IndexOf(prefix);
 			if (startIndex == -1)
-				return null;
-			startIndex += 9;
-#else
-			int startIndex = urlStr.IndexOf("::/");
-			if (startIndex == -1)
-				return null;
-			startIndex += 3;
-#endif
+					return null;
+			startIndex += prefix.Length;
+
 			int endIndex = urlStr.IndexOf(".htm", startIndex);
 			if (endIndex == -1)
 				return null;
@@ -1302,12 +1300,6 @@ namespace SIL.FieldWorks.Common.Controls
 				descFont = userFont;
 			}
 
-#if __MonoCS__
-			var tempfile = Path.Combine(FileUtils.GetTempFile("htm"));
-			using (var w = new StreamWriter(tempfile, false))
-			using (var tw = new XmlTextWriter(w))
-			{
-#endif
 			var htmlElem = new XElement("html",
 				new XElement("head",
 					new XElement("title", title)),
@@ -1321,18 +1313,24 @@ namespace SIL.FieldWorks.Common.Controls
 					new XElement("font",
 						new XAttribute("face", descFont),
 						new XElement("p", desc))));
-#if __MonoCS__
-			XmlDocument xmlDocument = new XmlDocument();
-			xmlDocument.LoadXml(htmlElem.ToString());
-			xmlDocument.WriteTo(tw);
+			if (MiscUtils.IsMono)
+			{
+				var tempfile = Path.Combine(FileUtils.GetTempFile("htm"));
+				using (var w = new StreamWriter(tempfile, false))
+				using (var tw = new XmlTextWriter(w))
+				{
+					XmlDocument xmlDocument = new XmlDocument();
+					xmlDocument.LoadXml(htmlElem.ToString());
+					xmlDocument.WriteTo(tw);
+				}
+				m_webBrowser.Navigate(tempfile);
+				if (FileUtils.FileExists(tempfile))
+					FileUtils.Delete(tempfile);
 			}
-			m_webBrowser.Navigate(tempfile);
-			if (FileUtils.FileExists(tempfile))
-				FileUtils.Delete(tempfile);
-			tempfile = null;
-#else
-			m_webBrowser.DocumentText = htmlElem.ToString();
-#endif
+			else if (Platform.IsWindows)
+			{
+				m_webBrowser.DocumentText = htmlElem.ToString();
+			}
 		}
 
 		private void m_flvLabels_SelectionChanged(object sender, FwObjectSelectionEventArgs e)
@@ -1355,12 +1353,11 @@ namespace SIL.FieldWorks.Common.Controls
 			m_webBrowser.GoForward();
 		}
 
-#if !__MonoCS__
 		private void m_printButton_Click(object sender, EventArgs e)
 		{
-			m_webBrowser.ShowPrintDialog();
+			if (Platform.IsWindows)
+				((WebBrowser)m_webBrowser.NativeBrowser).ShowPrintDialog();
 		}
-#endif
 
 		private void ExpandHelpBrowser()
 		{
@@ -1994,9 +1991,9 @@ namespace SIL.FieldWorks.Common.Controls
 		}
 
 		/// <summary>
-		/// Get or set the internal FdoCache value.
+		/// Get or set the internal LcmCache value.
 		/// </summary>
-		public FdoCache Cache
+		public LcmCache Cache
 		{
 			get
 			{
@@ -2042,8 +2039,6 @@ namespace SIL.FieldWorks.Common.Controls
 		/// the contents of this method with the code editor.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "TODO-Linux: LinkLabel.TabStop is missing from Mono")]
 		private void InitializeComponent()
 		{
 			this.components = new System.ComponentModel.Container();
@@ -2576,7 +2571,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
 		/// <returns></returns>
-		public static bool ChooseNaturalClass(IVwRootBox rootb, FdoCache cache,
+		public static bool ChooseNaturalClass(IVwRootBox rootb, LcmCache cache,
 			IPersistenceProvider persistenceProvider, Mediator mediator, PropertyTable propertyTable)
 		{
 			IEnumerable<ObjectLabel> labels = ObjectLabel.CreateObjectLabels(cache,
@@ -2668,12 +2663,14 @@ namespace SIL.FieldWorks.Common.Controls
 							return label.Object;
 					}
 				}
-#if __MonoCS__
-				// On Mono, m_labelsTreeView.SelectedNode is somehow cleared between OnOKClick
-				// and getting SelectedObject from the caller.  (See FWNX-853.)
-				if (m_chosenLabel != null)
-					return m_chosenLabel.Object;
-#endif
+
+				if (Platform.IsMono)
+				{
+					// On Mono, m_labelsTreeView.SelectedNode is somehow cleared between OnOKClick
+					// and getting SelectedObject from the caller.  (See FWNX-853.)
+					if (m_chosenLabel != null)
+						return m_chosenLabel.Object;
+				}
 				return null;
 			}
 		}
@@ -2712,7 +2709,7 @@ namespace SIL.FieldWorks.Common.Controls
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// ------------------------------------------------------------------------------------
 		public LeafChooser(IPersistenceProvider persistProvider,
-			IEnumerable<ObjectLabel> labels, string fieldName, FdoCache cache,
+			IEnumerable<ObjectLabel> labels, string fieldName, LcmCache cache,
 			IEnumerable<ICmObject> chosenObjs, int leafFlid, IHelpTopicProvider helpTopicProvider)
 			: base (persistProvider, fieldName, cache, chosenObjs, helpTopicProvider)
 		{

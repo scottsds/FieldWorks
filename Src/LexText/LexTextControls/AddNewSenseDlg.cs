@@ -1,4 +1,4 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
@@ -6,13 +6,13 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Diagnostics;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.Common.COMInterfaces;
-using SIL.FieldWorks.FDO.DomainServices;
-using XCore;
-using SIL.Utils;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using XCore;
 using SIL.FieldWorks.Common.Widgets;
 
 namespace SIL.FieldWorks.LexText.Controls
@@ -20,7 +20,7 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// <summary>
 	/// Summary description for Form1.
 	/// </summary>
-	public class AddNewSenseDlg : Form, IFWDisposable
+	public class AddNewSenseDlg : Form
 	{
 		private const string s_helpTopic = "khtpAddNewSense";
 		private System.Windows.Forms.HelpProvider helpProvider;
@@ -29,7 +29,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		private bool m_skipCheck = false;
 		private IHelpTopicProvider m_helpTopicProvider;
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private ILexEntry m_le;
 		private int m_newSenseID = 0;
 
@@ -343,7 +343,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			// m_msaGroupBox
 			//
 			resources.ApplyResources(this.m_msaGroupBox, "m_msaGroupBox");
-			this.m_msaGroupBox.MSAType = SIL.FieldWorks.FDO.MsaType.kNotSet;
+			this.m_msaGroupBox.MSAType = MsaType.kNotSet;
 			this.m_msaGroupBox.Name = "m_msaGroupBox";
 			this.m_msaGroupBox.Slot = null;
 			//
@@ -421,7 +421,7 @@ namespace SIL.FieldWorks.LexText.Controls
 						var lsNew = m_cache.ServiceLocator.GetInstance<ILexSenseFactory>().Create();
 						m_le.SensesOS.Add(lsNew);
 						int defAnalWs = m_cache.ServiceLocator.WritingSystems.DefaultAnalysisWritingSystem.Handle;
-						lsNew.Gloss.set_String(defAnalWs, m_cache.TsStrFactory.MakeString(m_fwtbGloss.Text, defAnalWs));
+						lsNew.Gloss.set_String(defAnalWs, TsStringUtils.MakeString(m_fwtbGloss.Text, defAnalWs));
 
 						lsNew.SandboxMSA = m_msaGroupBox.SandboxMSA;
 						m_newSenseID = lsNew.Hvo;

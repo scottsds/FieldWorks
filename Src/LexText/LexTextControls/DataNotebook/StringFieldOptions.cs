@@ -11,11 +11,10 @@
 using System;
 using System.Windows.Forms;
 
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 
 namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 {
@@ -26,8 +25,7 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 	/// ----------------------------------------------------------------------------------------
 	public partial class StringFieldOptions : UserControl
 	{
-		FdoCache m_cache;
-		private IHelpTopicProvider m_helpTopicProvider;
+		LcmCache m_cache;
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -39,12 +37,11 @@ namespace SIL.FieldWorks.LexText.Controls.DataNotebook
 			InitializeComponent();
 		}
 
-		internal void Initialize(FdoCache cache, IHelpTopicProvider helpTopicProvider, IApp app, IVwStylesheet stylesheet,
+		internal void Initialize(LcmCache cache, IHelpTopicProvider helpTopicProvider, IApp app,
 			NotebookImportWiz.RnSfMarker rsfm)
 		{
 			m_cache = cache;
-			m_helpTopicProvider = helpTopicProvider;
-			m_btnAddWritingSystem.Initialize(cache, helpTopicProvider, app, stylesheet);
+			m_btnAddWritingSystem.Initialize(cache, helpTopicProvider, app);
 			NotebookImportWiz.InitializeWritingSystemCombo(rsfm.m_sto.m_wsId, cache,
 				m_cbWritingSystem);
 		}

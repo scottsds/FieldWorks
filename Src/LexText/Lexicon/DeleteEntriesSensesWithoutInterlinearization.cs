@@ -4,23 +4,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Windows.Forms;
 using System.Diagnostics;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Application;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Application;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FwCoreDlgs;
-using XCore;
 
 namespace SIL.FieldWorks.XWorks.LexEd
 {
 	// This class is used in Tools...Utilities to delete all entries and senses that do not have
 	// analyzed occurrences in the interesting list of interlinear texts. It warns the user prior
 	// to actually deleting the entries and senses.
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification="m_dlg is a reference")]
 	class DeleteEntriesSensesWithoutInterlinearization : IUtility
 	{
 		public string Label
@@ -63,14 +59,14 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		public void Process()
 		{
 			Debug.Assert(m_dlg != null);
-			var cache = m_dlg.PropTable.GetValue<FdoCache>("cache");
+			var cache = m_dlg.PropTable.GetValue<LcmCache>("cache");
 			NonUndoableUnitOfWorkHelper.Do(cache.ActionHandlerAccessor, () =>
 				{
 					DeleteUnusedEntriesAndSenses(cache, m_dlg.ProgressBar);
 				});
 		}
 
-		void DeleteUnusedEntriesAndSenses(FdoCache cache, ProgressBar progressBar)
+		void DeleteUnusedEntriesAndSenses(LcmCache cache, ProgressBar progressBar)
 		{
 			ConcDecorator cd = new ConcDecorator(cache.DomainDataByFlid as ISilDataAccessManaged, null, cache.ServiceLocator);
 			cd.SetMediator(m_dlg.Mediator, m_dlg.PropTable); // This lets the ConcDecorator use the interesting list of texts.

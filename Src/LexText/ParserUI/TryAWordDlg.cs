@@ -1,19 +1,15 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: TryAWordDlg.cs
-// Responsibility: Andy Black
-// Last reviewed:
 //
 // <remarks>
 // Implementation of:
 //		TryAWordDlg - Dialog for parsing a single wordform
 // </remarks>
+
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -21,11 +17,10 @@ using System.Windows.Forms;
 using System.Xml.Linq;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.WordWorks.Parser;
-using SIL.Utils;
+using SIL.LCModel;
 using XCore;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
@@ -33,13 +28,13 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// <summary>
 	/// Summary description for TryAWordDlg.
 	/// </summary>
-	public class TryAWordDlg : Form, IFWDisposable, IMediatorProvider, IPropertyTableProvider
+	public class TryAWordDlg : Form, IMediatorProvider, IPropertyTableProvider
 	{
 		private const string PersistProviderID = "TryAWord";
 		private const string HelpTopicID = "khtpTryAWord";
 
 		#region Data members
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private ParserListener m_parserListener;
 		private PersistenceProvider m_persistProvider;
 		private readonly HelpProvider m_helpProvider;
@@ -89,14 +84,12 @@ namespace SIL.FieldWorks.LexText.Controls
 			m_helpProvider = new HelpProvider();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "Code in question is only compiled on Windows")]
 		public void SetDlgInfo(Mediator mediator, PropertyTable propertyTable, IWfiWordform wordform, ParserListener parserListener)
 		{
 			Mediator = mediator;
 			PropTable = propertyTable;
 			m_persistProvider = new PersistenceProvider(Mediator, propertyTable, PersistProviderID);
-			m_cache = PropTable.GetValue<FdoCache>("cache");
+			m_cache = PropTable.GetValue<LcmCache>("cache");
 			m_parserListener = parserListener;
 
 			Text = m_cache.ProjectId.UiName + " - " + Text;
@@ -132,8 +125,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="TryAWordRootSite gets added to control collection and disposed there")]
 		private void SetRootSite()
 		{
 			m_rootsite = new TryAWordRootSite(m_cache, Mediator, PropTable) { Dock = DockStyle.Top };
@@ -154,8 +145,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			return StringTable.Table.GetString(id, "Linguistics/Morphology/TryAWord");
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="HtmlControl gets added to control collection and disposed there")]
 		private void InitHtmlControl()
 		{
 			m_htmlControl = new HtmlControl
@@ -379,7 +368,10 @@ namespace SIL.FieldWorks.LexText.Controls
 			PropTable.SetPropertyPersistence("TryAWordDlg-lastWordToTry", true, PropertyTable.SettingsGroup.LocalSettings);
 			m_persistProvider.PersistWindowSettings(PersistProviderID, this);
 			if (m_parserListener.Connection != null)
+			{
 				m_parserListener.Connection.TryAWordDialogIsRunning = false;
+				m_parserListener.DisconnectFromParser();
+			}
 		}
 
 		private void m_wordformTextBox_TextChanged(object sender, EventArgs e)
@@ -534,19 +526,8 @@ namespace SIL.FieldWorks.LexText.Controls
 				m_parserListener.DisconnectFromParser();
 				m_statusLabel.Text = ParserStoppedMessage();
 				m_tryItButton.Enabled = true;
-				var iree = ex as InvalidReduplicationEnvironmentException;
-				if (iree != null)
-				{
-					string msg = String.Format(ParserUIStrings.ksHermitCrabReduplicationProblem, iree.Morpheme,
-						iree.Message);
-					MessageBox.Show(this, msg, ParserUIStrings.ksBadAffixForm,
-							MessageBoxButtons.OK, MessageBoxIcon.Error);
-				}
-				else
-				{
 					var app = PropTable.GetValue<IApp>("App");
-					ErrorReporter.ReportException(ex, app.SettingsKey, app.SupportEmailAddress, this, false);
-				}
+				ErrorReporter.ReportException(ex, app.SettingsKey, app.SupportEmailAddress, this, false);
 				return;
 			}
 

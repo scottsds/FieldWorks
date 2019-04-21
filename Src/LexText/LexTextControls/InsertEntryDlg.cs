@@ -1,38 +1,30 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: BasicEntryInfoDlg.cs
-// Responsibility: Randy Regnier
-// Last reviewed:
-//
-// <remarks>
-// Implementation of:
-//		InsertEntryDlg - Dialog for adding basic information of new entries.
-// </remarks>
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml;
 using Microsoft.Win32;
 using SIL.Collections;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexText.Controls.MGA;
 using SIL.FieldWorks.Resources;
-using SIL.Utils;
+using SIL.PlatformUtilities;
 using SIL.Windows.Forms;
 using XCore;
 
@@ -41,7 +33,7 @@ namespace SIL.FieldWorks.LexText.Controls
 	/// <summary>
 	/// Summary description for InsertEntryDlg.
 	/// </summary>
-	public class InsertEntryDlg : Form, IFWDisposable
+	public class InsertEntryDlg : Form
 	{
 		public enum MorphTypeFilterType
 		{
@@ -52,7 +44,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		#region Data members
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private Mediator m_mediator;
 		private XCore.PropertyTable m_propertyTable;
 		private ILexEntry m_entry;
@@ -98,7 +90,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		// These are used to identify the <Not Complex> and <Unknown Complex Form>
 		// entries in the combobox list.
 		int m_idxNotComplex;
-		int m_idxUnknownComplex;
+		private const string UnSpecifiedComplex = "Unspecified Complex Form";
 		private GroupBox m_glossGroupBox;
 		private LinkLabel m_lnkAssistant;
 
@@ -138,8 +130,6 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// Registry key for settings for this Dialog.
 		/// </summary>
 		/// -----------------------------------------------------------------------------------
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "We're returning an object")]
 		public RegistryKey SettingsKey
 		{
 			get
@@ -501,11 +491,13 @@ namespace SIL.FieldWorks.LexText.Controls
 			base.OnLoad(e);
 			if (Size != size)
 				Size = size;
-#if __MonoCS__
-			// Mono doesn't seem to fire the Activated event, so call the method here.
-			// This fixes FWNX-783, setting the focus in the gloss textbox.
-			SetInitialFocus();
-#endif
+
+			if (Platform.IsMono)
+			{
+				// Mono doesn't seem to fire the Activated event, so call the method here.
+				// This fixes FWNX-783, setting the focus in the gloss textbox.
+				SetInitialFocus();
+			}
 		}
 
 		bool m_fInitialized;
@@ -546,22 +538,22 @@ namespace SIL.FieldWorks.LexText.Controls
 			SetInitialFocus();
 		}
 
-#if __MonoCS__
-		/// <summary>
-		/// </summary>
+		/// <summary/>
 		protected override void WndProc(ref Message m)
 		{
-			// FWNX-520: fix some focus issues.
-			// By the time this message is processed, the popup form (PopupTree) may need to be the
-			// active window, so ignore WM_ACTIVATE.
-			if (m.Msg == 0x6 /*WM_ACTIVATE*/ && System.Windows.Forms.Form.ActiveForm == this)
+			if (Platform.IsMono)
 			{
-				return;
+				// FWNX-520: fix some focus issues.
+				// By the time this message is processed, the popup form (PopupTree) may need to be the
+				// active window, so ignore WM_ACTIVATE.
+				if (m.Msg == 0x6 /*WM_ACTIVATE*/ && System.Windows.Forms.Form.ActiveForm == this)
+				{
+					return;
+				}
 			}
 
 			base.WndProc(ref m);
 		}
-#endif
 
 		/// <summary>
 		/// Initialize the dialog.
@@ -569,14 +561,12 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="cache">The FDO cache to use.</param>
 		/// <param name="morphType">The morpheme type</param>
 		/// <remarks>All other variations of SetDlgInfo should eventually call this one.</remarks>
-		protected void SetDlgInfo(FdoCache cache, IMoMorphType morphType)
+		protected void SetDlgInfo(LcmCache cache, IMoMorphType morphType)
 		{
 			SetDlgInfo(cache, morphType, 0, MorphTypeFilterType.Any);
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "searchEngine is disposed by the mediator.")]
-		protected void SetDlgInfo(FdoCache cache, IMoMorphType morphType, int wsVern, MorphTypeFilterType filter)
+		protected void SetDlgInfo(LcmCache cache, IMoMorphType morphType, int wsVern, MorphTypeFilterType filter)
 		{
 			try
 			{
@@ -614,12 +604,11 @@ namespace SIL.FieldWorks.LexText.Controls
 				if (wsVern <= 0)
 					wsVern = defVernWs.Handle;
 				// initialize to empty TsStrings
-				ITsStrFactory tsf = cache.TsStrFactory;
 				//we need to use the wsVern so that tbLexicalForm is sized correctly for the font size.
 				//In Interlinear text the baseline can be in any of the vernacular writing systems, not just
 				//the defaultVernacularWritingSystem.
-				ITsString tssForm = tsf.MakeString("", wsVern);
-				ITsString tssGloss = tsf.MakeString("", defAnalWs.Handle);
+				ITsString tssForm = TsStringUtils.EmptyString(wsVern);
+				ITsString tssGloss = TsStringUtils.EmptyString(defAnalWs.Handle);
 
 				using (m_updateTextMonitor.Enter())
 				{
@@ -669,20 +658,17 @@ namespace SIL.FieldWorks.LexText.Controls
 
 				Text = GetTitle();
 				m_lnkAssistant.Enabled = false;
-
 				// Set font for the combobox.
-				m_cbMorphType.Font = new Font(defAnalWs.DefaultFontName, 10);
+				m_cbMorphType.Font = new Font(defAnalWs.DefaultFontName, 12);
 
 				// Populate morph type combo.
 				// first Fill ComplexFormType combo, since cbMorphType controls
 				// whether it gets enabled and which index is selected.
-				m_cbComplexFormType.Font = new Font(defAnalWs.DefaultFontName, 10);
+				m_cbComplexFormType.Font = new Font(defAnalWs.DefaultFontName, 12);
 				var rgComplexTypes = new List<ICmPossibility>(m_cache.LangProject.LexDbOA.ComplexEntryTypesOA.ReallyReallyAllPossibilities.ToArray());
 				rgComplexTypes.Sort();
 				m_idxNotComplex = m_cbComplexFormType.Items.Count;
 				m_cbComplexFormType.Items.Add(new DummyEntryType(LexTextControls.ksNotApplicable, false));
-				m_idxUnknownComplex = m_cbComplexFormType.Items.Count;
-				m_cbComplexFormType.Items.Add(new DummyEntryType(LexTextControls.ksUnknownComplexForm, true));
 				for (int i = 0; i < rgComplexTypes.Count; ++i)
 				{
 					var type = (ILexEntryType)rgComplexTypes[i];
@@ -793,7 +779,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="tssForm">The initial form to use.</param>
 		/// <param name="mediator">The XCore.Mediator to use.</param>
 		/// <param name="propertyTable"></param>
-		public void SetDlgInfo(FdoCache cache, ITsString tssForm, Mediator mediator, XCore.PropertyTable propertyTable)
+		public void SetDlgInfo(LcmCache cache, ITsString tssForm, Mediator mediator, XCore.PropertyTable propertyTable)
 		{
 			CheckDisposed();
 
@@ -810,14 +796,14 @@ namespace SIL.FieldWorks.LexText.Controls
 			{
 				TssForm = tssForm;
 
-				TssGloss = TsStringUtils.MakeTss("", wsContainer.DefaultAnalysisWritingSystem.Handle);
+				TssGloss = TsStringUtils.MakeString("", wsContainer.DefaultAnalysisWritingSystem.Handle);
 				// The lexical form is already set, so shift focus to the gloss when
 				// the form is activated.
 				m_fLexicalFormInitialFocus = false;
 			}
 			else
 			{
-				TssForm = TsStringUtils.MakeTss("", wsContainer.DefaultVernacularWritingSystem.Handle);
+				TssForm = TsStringUtils.MakeString("", wsContainer.DefaultVernacularWritingSystem.Handle);
 				TssGloss = tssForm;
 				// The gloss is already set, so shift the focus to the lexical form
 				// when the form is activated.
@@ -835,7 +821,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="mediator">The XCore.Mediator to use.</param>
 		/// <param name="propertyTable"></param>
 		/// <param name="persistProvider">The persistence provider to use.</param>
-		public void SetDlgInfo(FdoCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPersistenceProvider persistProvider)
+		public void SetDlgInfo(LcmCache cache, Mediator mediator, XCore.PropertyTable propertyTable, IPersistenceProvider persistProvider)
 		{
 			CheckDisposed();
 
@@ -856,7 +842,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="mediator">The mediator.</param>
 		/// <param name="propertyTable"></param>
 		/// <param name="filter">The filter.</param>
-		public void SetDlgInfo(FdoCache cache, IMoMorphType morphType,
+		public void SetDlgInfo(LcmCache cache, IMoMorphType morphType,
 			MsaType msaType, IMoInflAffixSlot slot, Mediator mediator, XCore.PropertyTable propertyTable, MorphTypeFilterType filter)
 		{
 			CheckDisposed();
@@ -883,7 +869,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// Initialize an InsertEntryDlg from something like an "Insert Major Entry menu".
 		/// </summary>
 		/// <param name="cache">The FDO cache to use.</param>
-		protected void SetDlgInfo(FdoCache cache)
+		protected void SetDlgInfo(LcmCache cache)
 		{
 			SetDlgInfo(cache, cache.ServiceLocator.GetInstance<IMoMorphTypeRepository>().GetObject(MoMorphTypeTags.kguidMorphStem));
 		}
@@ -952,7 +938,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			ITsString tssForm = TssForm;
 			int vernWs = TsStringUtils.GetWsAtOffset(tssForm, 0);
 			string form = MorphServices.EnsureNoMarkers(tssForm.Text, m_cache);
-			tssForm = m_cache.TsStrFactory.MakeString(form, vernWs);
+			tssForm = TsStringUtils.MakeString(form, vernWs);
 
 			ITsString tssGloss = SelectedOrBestGlossTss;
 
@@ -1041,8 +1027,6 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// Required method for Designer support - do not modify
 		/// the contents of this method with the code editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "TODO-Linux: LinkLabel.TabStop is missing from Mono")]
 		private void InitializeComponent()
 		{
 			this.components = new System.ComponentModel.Container();
@@ -1191,7 +1175,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			// m_msaGroupBox
 			//
 			resources.ApplyResources(this.m_msaGroupBox, "m_msaGroupBox");
-			this.m_msaGroupBox.MSAType = SIL.FieldWorks.FDO.MsaType.kNotSet;
+			this.m_msaGroupBox.MSAType = MsaType.kNotSet;
 			this.m_msaGroupBox.Name = "m_msaGroupBox";
 			this.m_msaGroupBox.Slot = null;
 			//
@@ -1450,7 +1434,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			entryComponents.MorphType = m_morphType;
 			CollectValuesFromMultiStringControl(msLexicalForm, entryComponents.LexemeFormAlternatives, BestTssForm);
 			CollectValuesFromMultiStringControl(msGloss, entryComponents.GlossAlternatives,
-				TsStringUtils.MakeTss(Gloss, m_cache.DefaultAnalWs));
+				TsStringUtils.MakeString(Gloss, m_cache.DefaultAnalWs));
 			entryComponents.MSA = m_msaGroupBox.SandboxMSA;
 			if (m_MGAGlossListBoxItems != null)
 			{
@@ -1463,7 +1447,6 @@ namespace SIL.FieldWorks.LexText.Controls
 		private void CollectValuesFromMultiStringControl(LabeledMultiStringControl lmsControl,
 			IList<ITsString> alternativesCollector, ITsString defaultIfNoMultiString)
 		{
-			var bldr = m_cache.TsStrFactory;
 			if (lmsControl == null)
 			{
 				alternativesCollector.Add(defaultIfNoMultiString);
@@ -1478,7 +1461,7 @@ namespace SIL.FieldWorks.LexText.Controls
 					if (tss != null && tss.Text != null)
 					{
 						// In the case of copied text, sometimes the string had the wrong ws attached to it. (LT-11950)
-						alternativesCollector.Add(bldr.MakeString(tss.Text, ws));
+						alternativesCollector.Add(TsStringUtils.MakeString(tss.Text, ws));
 					}
 				}
 			}
@@ -1608,9 +1591,14 @@ namespace SIL.FieldWorks.LexText.Controls
 				case MoMorphTypeTags.kMorphDiscontiguousPhrase:
 				case MoMorphTypeTags.kMorphPhrase:
 					m_cbComplexFormType.Enabled = true;
-					// default to "Unknown" for "phrase"
+					// default to "Unspecified Complex Form" if found, else set to "0" for "phrase"
 					if (m_cbComplexFormType.SelectedIndex == m_idxNotComplex)
-						m_cbComplexFormType.SelectedIndex = m_idxUnknownComplex;
+					{
+						int unSpecCompFormIndex = m_cbComplexFormType.FindStringExact(UnSpecifiedComplex);
+						m_cbComplexFormType.SelectedIndex = unSpecCompFormIndex != -1
+							? unSpecCompFormIndex
+							: 0;
+					}
 					break;
 				default:
 					m_cbComplexFormType.SelectedIndex = 0;
@@ -1699,8 +1687,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			UpdateMatches();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "TODO-Linux: LinkLabel.TabStop is missing from Mono")]
 		private void CheckIfGoto()
 		{
 			bool fEnable = m_matchingObjectsBrowser.SelectedObject != null;

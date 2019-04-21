@@ -8,15 +8,14 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using SIL.FieldWorks.Common.COMInterfaces;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Framework.DetailControls.Resources;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
-using SIL.Utils;
+using SIL.LCModel;
 using XCore;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.KernelInterfaces;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
 {
@@ -39,7 +38,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 		public Mediator Mediator { private get; set; }
 
-		public FdoCache Cache { private get; set; }
+		public LcmCache Cache { private get; set; }
 
 		public string DisplayWs { get; set; }
 
@@ -401,8 +400,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			domainList.EndUpdate();
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "cache is a reference")]
 		private static Font GetFontForFormFromObjectLabels(IEnumerable<ObjectLabel> labelList, IVwStylesheet stylesheet)
 		{
 			var cache = labelList.First().Object.Cache;

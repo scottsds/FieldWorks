@@ -1,39 +1,36 @@
-// Copyright (c) 2003-2014 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: BaseGoDlg.cs
-// Responsibility: Randy Regnier
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.Widgets;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Resources;
-using SIL.Utils;
 using SIL.Windows.Forms;
 using XCore;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
 	/// <summary/>
-	public class BaseGoDlg : Form, IFWDisposable
+	public class BaseGoDlg : Form
 	{
 		#region	Data members
 
-		protected FdoCache m_cache;
+		protected LcmCache m_cache;
 		protected IHelpTopicProvider m_helpTopicProvider;
 		protected ICmObject m_selObject;
 		protected HashSet<int> m_vernHvos;
 		protected HashSet<int> m_analHvos;
-		protected ITsStrFactory m_tsf;
 		/// <summary>
 		/// </summary>
 		protected Mediator m_mediator;
@@ -216,7 +213,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			{
 			}
 			m_cache = null;
-			m_tsf = null;
 
 			base.Dispose(disposing);
 		}
@@ -228,18 +224,17 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="wp">Strings used for various items in this dialog.</param>
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
-		public virtual void SetDlgInfo(FdoCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable)
+		public virtual void SetDlgInfo(LcmCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable)
 		{
 			SetDlgInfo(cache, wp, mediator, propertyTable, cache.DefaultVernWs);
 		}
 
-		protected virtual void SetDlgInfo(FdoCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, int ws)
+		protected virtual void SetDlgInfo(LcmCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, int ws)
 		{
 			CheckDisposed();
 
 			Debug.Assert(cache != null);
 			m_cache = cache;
-			m_tsf = cache.TsStrFactory; // do this very early, other initializers may depend on it.
 
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
@@ -285,7 +280,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			m_tbForm.WritingSystemFactory = cache.WritingSystemFactory;
 			m_tbForm.WritingSystemCode = ws;
 			m_tbForm.AdjustStringHeight = false;
-			m_tbForm.Tss = m_tsf.MakeString("", ws);
+			m_tbForm.Tss = TsStringUtils.EmptyString(ws);
 			m_tbForm.StyleSheet = stylesheet;
 
 			// Setup the fancy message text box.
@@ -442,7 +437,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			}
 		}
 
-		protected virtual void InitializeMatchingObjects(FdoCache cache)
+		protected virtual void InitializeMatchingObjects(LcmCache cache)
 		{
 			// override.
 		}
@@ -492,13 +487,13 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
 		/// <param name="form">Form to use in main text edit box.</param>
-		public virtual void SetDlgInfo(FdoCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, string form)
+		public virtual void SetDlgInfo(LcmCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, string form)
 		{
 			CheckDisposed();
 			SetDlgInfo(cache, wp, mediator, propertyTable, form, cache.DefaultVernWs);
 		}
 
-		protected void SetDlgInfo(FdoCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, string form, int ws)
+		protected void SetDlgInfo(LcmCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, string form, int ws)
 		{
 			SetDlgInfo(cache, wp, mediator, propertyTable, ws);
 			Form = form;
@@ -512,7 +507,7 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="mediator"></param>
 		/// <param name="propertyTable"></param>
 		/// <param name="tssform">establishes the ws of the dialog.</param>
-		public void SetDlgInfo(FdoCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, ITsString tssform)
+		public void SetDlgInfo(LcmCache cache, WindowParams wp, Mediator mediator, XCore.PropertyTable propertyTable, ITsString tssform)
 		{
 			CheckDisposed();
 			SetDlgInfo(cache, wp, mediator, propertyTable, tssform.Text, TsStringUtils.GetWsAtOffset(tssform, 0));
@@ -583,7 +578,7 @@ namespace SIL.FieldWorks.LexText.Controls
 
 		protected void ResetForm()
 		{
-			m_tbForm.Tss = m_tsf.MakeString("", m_tbForm.WritingSystemCode);
+			m_tbForm.Tss = TsStringUtils.EmptyString(m_tbForm.WritingSystemCode);
 			m_tbForm.Select();
 		}
 

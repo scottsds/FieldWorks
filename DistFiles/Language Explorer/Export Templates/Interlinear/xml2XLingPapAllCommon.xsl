@@ -3,7 +3,7 @@
 	<!-- This stylesheet contains the common components for XLingPaper output  -->
 
 	<xsl:key name="ItemsLang" match="//item" use="@lang"/>
-
+	<xsl:variable name="sThisTextId" select="substring-before(/document/interlinear-text/@guid,'-')"/>
 	<xsl:template match="interlinear-text">
 		<xsl:variable name="sScriptureType">
 			<xsl:variable name="sTitle" select="item[@type='title']"/>
@@ -193,7 +193,7 @@
 			<xsl:value-of select="@lang"/>
 			<xsl:text>-</xsl:text>
 			<xsl:choose>
-				<xsl:when test="following-sibling::morphemes or @type='punct' or @type='txt' and count(../*)=1">
+				<xsl:when test="following-sibling::morphemes or @type='punct' or @type='txt' and count(../*)=1 or @type='txt' and not(following-sibling::morphemes)">
 					<xsl:text>baseline</xsl:text>
 				</xsl:when>
 				<xsl:otherwise>
@@ -233,11 +233,15 @@
 						</xsl:if>-->
 					</language>
 				</xsl:if>
-				<xsl:if test="key('ItemsLang',$sLangId)[parent::word and following-sibling::morphemes]">
+				<xsl:if test="key('ItemsLang',$sLangId)[parent::word and following-sibling::morphemes or parent::word and not(following-sibling::morphemes) and @type='txt']">
 					<language font-family="{$sFont}" id="{$sLangId}-baseline">
 						<!--<xsl:if test="@vernacular='true'">
 							<xsl:attribute name="name">vernacular</xsl:attribute>
 						</xsl:if>-->
+					</language>
+				</xsl:if>
+				<xsl:if test="key('ItemsLang',$sLangId)[parent::word and @type='punct']">
+					<language font-family="{$sFont}" id="{$sLangId}-baseline">
 					</language>
 				</xsl:if>
 				<xsl:if test="key('ItemsLang',$sLangId)[parent::word and @type='pos']">

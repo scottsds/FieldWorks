@@ -1,31 +1,29 @@
-// Copyright (c) 2003-2013 SIL International
+// Copyright (c) 2003-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: FwProjPropertiesDlg.cs
-// Responsibility: TE Team
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.Controls.FileDialog;
+using SIL.LCModel.Core.KernelInterfaces;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.Resources;
 using SIL.Lexicon;
-using SIL.Utils;
+using XCore;
 
 namespace SIL.FieldWorks.FwCoreDlgs
 {
@@ -35,7 +33,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 	/// Summary description for FwProjPropertiesDlg.
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	public class FwProjPropertiesDlg : Form, IFWDisposable
+	public class FwProjPropertiesDlg : Form
 	{
 		/// <summary>
 		/// Occurs when the project properties change.
@@ -50,7 +48,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// <summary>Index of the tab for user properties account</summary>
 		protected const int kExternalLinksTab = 2;
 
-		private FdoCache m_cache;
+		private LcmCache m_cache;
 		private readonly ILangProject m_langProj;
 		private IHelpTopicProvider m_helpTopicProvider;
 		private readonly IApp m_app;
@@ -74,8 +72,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		private ToolStripMenuItem menuItem2;
 		private TextBox txtExtLnkEdit;
 		private IContainer components;
-		/// <summary></summary>
-		protected IVwStylesheet m_stylesheet;
 		/// <summary>A change in writing systems has been made that may affect
 		/// current displays.</summary>
 		protected bool m_fWsChanged;
@@ -159,16 +155,14 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
 		/// Creates and initializes a new instance of the FwProjProperties class. Accepts an
-		/// FdoCache that encapsulates a DB connection.
+		/// LcmCache that encapsulates a DB connection.
 		/// </summary>
 		/// <param name="cache">Accessor for data cache and DB connection</param>
 		/// <param name="app">The application (can be <c>null</c>)</param>
 		/// <param name="helpTopicProvider">IHelpTopicProvider object used to get help
 		/// information</param>
-		/// <param name="stylesheet">this is used for the FwTextBox</param>
 		/// ------------------------------------------------------------------------------------
-		public FwProjPropertiesDlg(FdoCache cache, IApp app, IHelpTopicProvider helpTopicProvider,
-			IVwStylesheet stylesheet): this()
+		public FwProjPropertiesDlg(LcmCache cache, IApp app, IHelpTopicProvider helpTopicProvider): this()
 		{
 			if (cache == null)
 				throw new ArgumentNullException("cache", "Null Cache passed to FwProjProperties");
@@ -178,7 +172,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 			m_helpTopicProvider = helpTopicProvider;
 			m_app = app;
-			m_stylesheet = stylesheet;
 			m_projectLexiconSettingsDataMapper = new ProjectLexiconSettingsDataMapper(m_cache.ServiceLocator.DataSetup.ProjectSettingsStore);
 			m_projectLexiconSettings = new ProjectLexiconSettings();
 			m_projectLexiconSettingsDataMapper.Read(m_projectLexiconSettings);
@@ -189,7 +182,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			m_fLinkedFilesChanged = false;
 			txtExtLnkEdit.Text = m_langProj.LinkedFilesRootDir;
 
-			m_defaultLinkedFilesFolder = FdoFileHelper.GetDefaultLinkedFilesDir(m_cache.ServiceLocator.DataSetup.ProjectId.ProjectFolder);
+			m_defaultLinkedFilesFolder = LcmFileHelper.GetDefaultLinkedFilesDir(m_cache.ServiceLocator.DataSetup.ProjectId.ProjectFolder);
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -323,8 +316,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		/// Required method for Designer support - do not modify
 		/// the contents of this method with the code editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Portability", "MonoCompatibilityReviewRule",
-			Justification = "LinkLabel::set_TabStop is missing from Mono.")]
 		private void InitializeComponent()
 		{
 			this.components = new System.ComponentModel.Container();
@@ -1066,7 +1057,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			var userWs = m_cache.ServiceLocator.WritingSystemManager.UserWs;
 			m_fProjNameChanged = (m_txtProjName.Text != m_sOrigProjName);
 			if (m_txtProjDescription.Text != m_sOrigDescription)
-				m_langProj.Description.set_String(userWs, m_cache.TsStrFactory.MakeString(m_txtProjDescription.Text, userWs));
+				m_langProj.Description.set_String(userWs, TsStringUtils.MakeString(m_txtProjDescription.Text, userWs));
 
 			var sNewLinkedFilesRootDir = txtExtLnkEdit.Text;
 			SaveLinkedFilesChanges(sNewLinkedFilesRootDir);
@@ -1103,6 +1094,25 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				WritingSystemServices.DeleteWritingSystem(m_cache, ws);
 				m_fWsChanged = true;
 			}
+			if (m_fWsChanged)
+			{
+				var mediator = GetMediator();
+				if (mediator != null)
+					mediator.SendMessage("WritingSystemDeleted", m_deletedWritingSystems.Select(x => x.Id).ToArray());
+			}
+		}
+
+		private Mediator GetMediator()
+		{
+			if (m_app == null)
+				return null;
+			Form wndActive = m_app.ActiveMainWindow;
+			if (wndActive == null)
+				return null;
+			var mediator = ((IMediatorProvider)m_app.ActiveMainWindow).Mediator;
+			if (mediator == null)
+				return null;
+			return mediator;
 		}
 
 		private void MergeWritingSystems()
@@ -1115,6 +1125,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				MergeOnLocalList(mergedWs, m_lstVernWs.Items);
 				MergeOnLocalList(mergedWs, m_lstAnalWs.Items);
 				m_fWsChanged = true;
+				m_deletedWritingSystems.Add(mergedWs.Key);
+				DeleteWritingSystems();
 			}
 		}
 
@@ -1252,8 +1264,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Caller is responsible for diposing tool strip items that get added to context menu.")]
 		static internal void PopulateWsContextMenu(ContextMenuStrip cmnuAddWs, IEnumerable<CoreWritingSystemDefinition> wssToAdd,
 			ListBox listToAddTo, EventHandler clickHandlerExistingWs, EventHandler clickHandlerNewWs,
 			EventHandler clickHandlerNewWsFromSelected, CoreWritingSystemDefinition selectedWs)
@@ -1284,8 +1294,6 @@ namespace SIL.FieldWorks.FwCoreDlgs
 			}
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "Caller is responsible for diposing tool strip items that get added to context menu.")]
 		private static void AddExistingWssToContextMenu(ContextMenuStrip cmnuAddWs,
 			IEnumerable<CoreWritingSystemDefinition> wssToAdd, ListBox listToAddExistingTo, EventHandler clickHandlerExistingWs)
 		{
@@ -1371,17 +1379,27 @@ namespace SIL.FieldWorks.FwCoreDlgs
 
 		private void DisplayModifyWritingSystemProperties(CheckedListBox list, bool addNewForLangOfSelectedWs)
 		{
-			CoreWritingSystemDefinition selectedWs = GetCurrentSelectedWs(list);
+			var selectedWs = GetCurrentSelectedWs(list);
 
 			IEnumerable<CoreWritingSystemDefinition> newWritingSystems;
 			if (WritingSystemPropertiesDialog.ShowModifyDialog(this, selectedWs, addNewForLangOfSelectedWs, m_cache, CurrentWritingSystemContainer,
-				m_helpTopicProvider, m_app, m_stylesheet, out newWritingSystems))
+				m_helpTopicProvider, m_app, out newWritingSystems))
 			{
 				m_fWsChanged = true;
-				foreach (CoreWritingSystemDefinition newWs in newWritingSystems)
+				foreach (var newWs in newWritingSystems)
 				{
-					if (!list.Items.Cast<CoreWritingSystemDefinition>().Any(ws => ws.Id == newWs.Id))
-						list.Items.Add(newWs, true);
+					var exWs = list.Items.Cast<CoreWritingSystemDefinition>().FirstOrDefault(ws => ws.LanguageTag == newWs.LanguageTag);
+					if (exWs != null)
+					{
+						// LT-19296: for some reason, the first time we set the font for a new WS, a duplicate is created.
+						list.Items.Remove(exWs);
+					}
+					list.Items.Add(newWs, true);
+					if (list.SelectedItem == null)
+					{
+						// exWs was probably selected before; select its replacement.
+						list.SelectedItem = newWs;
+					}
 				}
 				list.Invalidate();
 				//LT-13893   Make sure that the HomographWs still matches the DefaultVernacularWritingSystem in case it was changed.
@@ -1535,7 +1553,7 @@ namespace SIL.FieldWorks.FwCoreDlgs
 		{
 			IEnumerable<CoreWritingSystemDefinition> newWritingSystems;
 			if (WritingSystemPropertiesDialog.ShowNewDialog(this, m_cache, m_cache.ServiceLocator.WritingSystemManager, CurrentWritingSystemContainer,
-				m_helpTopicProvider, m_app, m_stylesheet, true, null, out newWritingSystems))
+				m_helpTopicProvider, m_app, true, null, out newWritingSystems))
 			{
 				foreach (CoreWritingSystemDefinition ws in newWritingSystems)
 					list.Items.Add(ws, true);
@@ -1816,6 +1834,8 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				{
 					if (ws.Handle == 0)
 						m_cache.ServiceLocator.WritingSystemManager.Replace(ws);
+					else if (!m_cache.ServiceLocator.WritingSystemManager.WritingSystemStore.AllWritingSystems.Contains(ws))
+						m_cache.ServiceLocator.WritingSystemManager.Set(ws);
 					allSet.Add(ws);
 				}
 				m_fWsChanged = true;
@@ -1877,11 +1897,16 @@ namespace SIL.FieldWorks.FwCoreDlgs
 				m_list = list;
 			}
 
-			/// --------------------------------------------------------------------------------
-			/// <summary>
-			///
-			/// </summary>
-			/// --------------------------------------------------------------------------------
+			/// <summary/>
+			protected override void Dispose(bool disposing)
+			{
+				System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType() + " ******");
+				if (disposing)
+					m_list?.Dispose();
+				base.Dispose(disposing);
+			}
+
+			/// <summary/>
 			public CoreWritingSystemDefinition WritingSystem
 			{
 				get

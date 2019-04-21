@@ -12,16 +12,10 @@ include $(BUILD_ROOT)/Bld/_names.mak
 BUILD_PRODUCT = FieldWorks
 include $(BUILD_ROOT)/Bld/_init.mak.lnx
 SHELL=/bin/bash
+BITS := $(shell test `arch` = x86_64 && echo 64 || echo 32)
+PLATFORM := $(shell test `arch` = x86_64 && echo x64 || echo x86)
 
-all: tlbs-copy teckit alltargets
-
-# This is to facilitate easier use of CsProj files.
-linktoOutputDebug:
-	@-mkdir -p Output/
-	@ln -sf $(OUT_DIR) Output/Debug
-	@ln -sf $(OUT_DIR)/../XMI Output/XMI
-	@ln -sf $(OUT_DIR)/../Common Output/Common
-
+all:
 
 externaltargets: \
 	Win32Base \
@@ -35,90 +29,6 @@ externaltargets-test: \
 	COM-check \
 	Win32More-check \
 
-nativetargets: \
-	externaltargets \
-	Generic-all \
-	generic-Test \
-	libAppCore \
-	libFwKernel \
-	Kernel-link \
-	libCellar \
-	libGraphiteTlb \
-	libLanguage \
-	libViews \
-	libVwGraphics \
-	views-link \
-	views-Test \
-	kernel-Test \
-	language-Test \
-
-alltargets: \
-	nativetargets \
-	FwResources \
-	Utilities-BasicUtils \
-	common-COMInterfaces \
-	common-Utils \
-	Utilities-MessageBoxExLib \
-	Utilities-XMLUtils \
-	common-FwUtils \
-	common-Controls-Design \
-	common-ScrUtilsInterfaces\
-	common-ScriptureUtils \
-	common-Controls-FwControls \
-	Utilities-Reporting \
-	FDO \
-	XCore-Interfaces \
-	common-UIAdapterInterfaces \
-	common-SimpleRootSite \
-	common-RootSite \
-	common-Framework \
-	common-Widgets \
-	common-Filters \
-	XCore \
-	FwCoreDlgsGTK \
-	FwCoreDlgGTKWidgets \
-	FwCoreDlgs-FwCoreDlgControls \
-	FwCoreDlgs-FwCoreDlgControlsGTK \
-	FwCoreDlgs \
-	DbAccess \
-	LangInst \
-	ComponentsMap \
-	IcuDataFiles \
-	install-strings \
-	l10n-all \
-
-test: \
-	externaltargets-test \
-	views-Test-check \
-	kernel-Test-check \
-	language-Test-check \
-	generic-Test-check \
-
-test-interactive: \
-	FwCoreDlgs-SimpleTest \
-	FwCoreDlgs-SimpleTest-check \
-
-test-database: \
-	DbAccessFirebird-check \
-
-# Make copies of pre-generated files in Common.
-tlbs-copy:
-	@-mkdir -p $(COM_OUT_DIR)
-	-cp -prf $(BUILD_ROOT)/Lib/linux/Common/* $(COM_OUT_DIR)/
-
-tlbs-clean:
-	$(RM) -rf $(COM_OUT_DIR)
-
-# ICU on Linux looks for files (like unorm.icu uprops.icu) in
-# $(BUILD_ROOT)/DistFiles/Icu54/icudt54l/icudt54l
-# I think we need to move the *.icu into a sub dir
-# currently copying incase anything trys to access *.icu in the first
-# icudt50l directory.icudt
-IcuDataFiles:
-	(cd $(BUILD_ROOT)/DistFiles/Icu$(ICU_VERSION) && unzip -u ../Icu$(ICU_VERSION).zip)
-	-(cd $(BUILD_ROOT)/DistFiles/Icu$(ICU_VERSION)/icudt$(ICU_VERSION)l && mkdir icudt$(ICU_VERSION)l)
-	-(cd $(BUILD_ROOT)/DistFiles/Icu54/icudt$(ICU_VERSION)l && cp -p *.icu icudt$(ICU_VERSION)l)
-
 
 # This build item isn't run on a normal build.
 generate-strings:
@@ -127,15 +37,6 @@ generate-strings:
 	(cd $(SRC)/Kernel/ && $(BUILD_ROOT)/Bin/make-strings.sh FwKernel.rc >> $(BUILD_ROOT)/DistFiles/strings-en.txt)
 	(cd $(SRC)/views/ && $(BUILD_ROOT)/Bin/make-strings.sh Views.rc >> $(BUILD_ROOT)/DistFiles/strings-en.txt)
 	(cd $(SRC)/AppCore/ && C_INCLUDE_PATH=./Res $(BUILD_ROOT)/Bin/make-strings.sh Res/AfApp.rc >> $(BUILD_ROOT)/DistFiles/strings-en.txt)
-
-# now done in xbuild/msbuild
-install-strings:
-	cp -pf $(BUILD_ROOT)/DistFiles/strings-en.txt $(OUT_DIR)/strings-en.txt
-
-# setup current sets up the mono registry necessary to run certain program
-# This is now done in xbuild/msbuild.
-setup:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:setRegistryValues)
 
 
 clean: \
@@ -151,62 +52,26 @@ clean: \
 	Kernel-clean \
 	Win32Base-clean \
 	Win32More-clean \
-	Graphite-GrEngine-clean \
 	Language-clean \
 	views-Test-clean \
 	kernel-Test-clean \
 	language-Test-clean \
-	common-COMInterfaces-clean \
-	common-SimpleRootSite-clean \
-	common-RootSite-clean \
-	common-Framework-clean \
-	common-Widgets-clean \
-	common-Utils-clean \
-	common-FwUtils-clean \
-	common-Filters-clean \
-	common-UIAdapterInterfaces-clean \
-	common-ScriptureUtils-clean \
-	common-ScrUtilsInterfaces-clean \
-	FwResources-clean \
-	Utilities-BasicUtils-clean \
-	Utilities-MessageBoxExLib-clean \
-	Utilities-XMLUtils-clean \
-	common-Controls-FwControls-clean \
-	common-Controls-Design-clean \
-	Utilities-Reporting-clean \
-	FDO-clean \
-	FwCoreDlgsGTK-clean \
-	FwCoreDlgGTKWidgets-clean \
-	FwCoreDlgs-FwCoreDlgControls-clean \
-	FwCoreDlgs-FwCoreDlgControlsGTK-clean \
-	FwCoreDlgs-clean \
-	DbAccess-clean \
-	XCore-Interfaces-clean \
-	XCore-clean \
-	LangInst-clean \
 	ComponentsMap-clean \
 	generic-Test-clean \
 	tlbs-clean \
-	teckit-clean \
 	l10n-clean \
 	manpage-clean \
-
-# IDLImp is a C# app, so there is no reason to re-create that during our build.
-# We should be able to just use the version in $(BUILD_ROOT)\Bin
-tools: \
-	Unit++-package \
-
-tools-clean: \
-	Unit++-clean \
 
 idl: idl-do
 # extracting the GUIDs is now done with a xbuild target, please run 'xbuild /t:generateLinuxIdlFiles'
 
 idl-do:
-	$(MAKE) -C$(SRC)/Common/COMInterfaces -f IDLMakefile all
+	$(MAKE) -C$(SRC)/Common/ViewsInterfaces -f IDLMakefile all
+	$(MAKE) -C$(SRC)/Common/FwKernelInterfaces -f IDLMakefile all
 
 idl-clean:
-	$(MAKE) -C$(SRC)/Common/COMInterfaces -f IDLMakefile clean
+	$(MAKE) -C$(SRC)/Common/ViewsInterfaces -f IDLMakefile clean
+	$(MAKE) -C$(SRC)/Common/FwKernelInterfaces -f IDLMakefile clean
 
 fieldworks-flex.1.gz: DistFiles/Linux/fieldworks-flex.1.xml
 	docbook2x-man DistFiles/Linux/fieldworks-flex.1.xml
@@ -220,17 +85,14 @@ manpage-clean:
 install-tree-fdo:
 	# Create directories
 	install -d $(DESTDIR)/usr/lib/fieldworks
-	install -d $(DESTDIR)/usr/lib/fieldworks/icu-bin
-	install -d $(DESTDIR)/usr/lib/pkgconfig
+	install -d $(DESTDIR)/usr/lib/fieldworks/Firefox-Linux$(BITS)
 	install -d $(DESTDIR)/usr/share/fieldworks
 	install -d $(DESTDIR)/var/lib/fieldworks
 	# Install libraries and their support files
 	install -m 644 $(OUT_DIR)/*.{dll*,so} $(DESTDIR)/usr/lib/fieldworks
+	install -m 644 $(OUT_DIR)/Firefox-Linux$(BITS)/*.* $(DESTDIR)/usr/lib/fieldworks/Firefox-Linux$(BITS)
 	install -m 644 $(OUT_DIR)/{*.compmap,components.map} $(DESTDIR)/usr/lib/fieldworks
-	install -m 644 Lib/src/icu/install$(ARCH)/lib/lib* $(DESTDIR)/usr/lib/fieldworks
 	# Install executables and scripts
-	install Lib/src/icu/install$(ARCH)/bin/* $(DESTDIR)/usr/lib/fieldworks/icu-bin
-	install Lib/src/icu/source/bin/* $(DESTDIR)/usr/lib/fieldworks/icu-bin
 	install Lib/linux/setup-user $(DESTDIR)/usr/share/fieldworks/
 	# Install content and plug-ins
 	# For reasons I don't understand we need strings-en.txt otherwise the tests fail when run from xbuild
@@ -250,6 +112,7 @@ install-tree: fieldworks-flex.1.gz unicodechareditor.1.gz install-tree-fdo
 	install -d $(DESTDIR)/usr/lib/fieldworks
 	install -d $(DESTDIR)/usr/share/fieldworks
 	install -d $(DESTDIR)/usr/share/man/man1
+	install -d $(DESTDIR)/etc/profile.d
 	# Install libraries and their support files
 	install -m 644 DistFiles/*.{dll*,so} $(DESTDIR)/usr/lib/fieldworks
 	install -m 644 DistFiles/Linux/*.so $(DESTDIR)/usr/lib/fieldworks
@@ -263,8 +126,9 @@ install-tree: fieldworks-flex.1.gz unicodechareditor.1.gz install-tree-fdo
 	install Lib/linux/unicodechareditor $(DESTDIR)/usr/bin
 	install Lib/linux/{cpol-action,run-app,extract-userws.xsl} $(DESTDIR)/usr/lib/fieldworks
 	install -m 644 environ{,-xulrunner} $(DESTDIR)/usr/lib/fieldworks
+	install -m 644 Lib/linux/fieldworks.sh $(DESTDIR)/etc/profile.d
 	# Install content and plug-ins
-	install -m 644 DistFiles/*.{pdf,txt,reg} $(DESTDIR)/usr/share/fieldworks
+	install -m 644 DistFiles/*.{txt,reg} $(DESTDIR)/usr/share/fieldworks
 	cp -pdr DistFiles/{"Editorial Checks",EncodingConverters} $(DESTDIR)/usr/share/fieldworks
 	cp -pdr DistFiles/{Helps,Fonts,Graphite,Keyboards,"Language Explorer",Parts} $(DESTDIR)/usr/share/fieldworks
 	# Install man pages
@@ -288,8 +152,12 @@ install-tree: fieldworks-flex.1.gz unicodechareditor.1.gz install-tree-fdo
 install-menuentries:
 	# Add to Applications menu
 	install -d $(DESTDIR)/usr/share/pixmaps
+	install -d $(DESTDIR)/usr/share/icons/hicolor/64x64/apps
+	install -d $(DESTDIR)/usr/share/icons/hicolor/128x128/apps
 	install -d $(DESTDIR)/usr/share/applications
 	install -m 644 Src/LexText/LexTextExe/LT.png $(DESTDIR)/usr/share/pixmaps/fieldworks-flex.png
+	install -m 644 Src/LexText/LexTextExe/LT64.png $(DESTDIR)/usr/share/icons/hicolor/64x64/apps/fieldworks-flex.png
+	install -m 644 Src/LexText/LexTextExe/LT128.png $(DESTDIR)/usr/share/icons/hicolor/128x128/apps/fieldworks-flex.png
 	desktop-file-install --dir $(DESTDIR)/usr/share/applications Lib/linux/fieldworks-flex.desktop
 	desktop-file-install --dir $(DESTDIR)/usr/share/applications Lib/linux/unicodechareditor.desktop
 
@@ -310,6 +178,8 @@ uninstall: uninstall-menuentries
 uninstall-menuentries:
 	rm -f $(DESTDIR)/usr/share/pixmaps/fieldworks-flex.png
 	rm -f $(DESTDIR)/usr/share/applications/fieldworks-flex.desktop
+	rm -f $(DESTDIR)/usr/share/icons/hicolor/64x64/apps/fieldworks-flex.png
+	rm -f $(DESTDIR)/usr/share/icons/hicolor/128x128/apps/fieldworks-flex.png
 
 installable-COM-all:
 	mkdir -p $(COM_DIR)/installer$(ARCH)
@@ -436,13 +306,6 @@ Language-clean:
 Language-link:
 	$(MAKE) -C$(SRC)/Language link_check
 
-Graphite-GrEngine-all: Graphite-GrEngine-nodep
-Graphite-GrEngine-nodep: libGraphiteTlb
-libGraphiteTlb:
-	$(MAKE) -C$(SRC)/Graphite/GrEngine all
-Graphite-GrEngine-clean:
-	$(MAKE) -C$(SRC)/Graphite/GrEngine clean
-
 unit++-all:
 	-mkdir -p $(BUILD_ROOT)/Lib/src/unit++/build$(ARCH)
 	([ ! -e $(BUILD_ROOT)/Lib/src/unit++/build$(ARCH)/Makefile ] && cd $(BUILD_ROOT)/Lib/src/unit++/build$(ARCH) && autoreconf -isf .. && ../configure ; true)
@@ -482,194 +345,9 @@ language-Test-check:
 
 language-Test-check:
 
-FwCoreDlgs-SimpleTest:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/SimpleTest all
-
-FwCoreDlgs-SimpleTest-check:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/SimpleTest run
-
-
-DbAccessFirebird-check:
-	$(MAKE) -C$(SRC)/DbAccessFirebird check
-
-# $(MAKE) Common items
-common-COMInterfaces:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:COMInterfaces)
-common-COMInterfaces-clean:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:COMInterfaces /property:action=clean)
-
-common-Utils:
-	$(MAKE) -C$(SRC)/Common/Utils all
-common-Utils-clean:
-	$(MAKE) -C$(SRC)/Common/Utils clean
-
-common-FwUtils:
-	$(MAKE) -C$(SRC)/Common/FwUtils all
-common-FwUtils-clean:
-	$(MAKE) -C$(SRC)/Common/FwUtils clean
-
-common-SimpleRootSite:
-	$(MAKE) -C$(SRC)/Common/SimpleRootSiteGtk all
-common-SimpleRootSite-clean:
-	$(MAKE)  -C$(SRC)/Common/SimpleRootSiteGtk clean
-
-common-RootSite: common-SimpleRootSite
-	$(MAKE) -C$(SRC)/Common/RootSite all
-common-RootSite-clean:
-	 $(MAKE) -C$(SRC)/Common/RootSite clean
-
-common-Framework:
-	$(MAKE) -C$(SRC)/Common/Framework all
-common-Framework-clean:
-	$(MAKE) -C$(SRC)/Common/Framework clean
-
-common-Widgets:
-	$(MAKE) -C$(SRC)/Common/Controls/Widgets all
-common-Widgets-clean:
-	$(MAKE) -C$(SRC)/Common/Controls/Widgets clean
-
-common-Filters:
-	$(MAKE) -C$(SRC)/Common/Filters all
-common-Filters-clean:
-	$(MAKE) -C$(SRC)/Common/Filters clean
-
-common-UIAdapterInterfaces:
-	$(MAKE) -C$(SRC)/Common/UIAdapterInterfaces all
-common-UIAdapterInterfaces-clean:
-	$(MAKE) -C$(SRC)/Common/UIAdapterInterfaces clean
-
-common-ScriptureUtils:
-	$(MAKE) -C$(SRC)/Common/ScriptureUtils all
-common-ScriptureUtils-clean:
-	$(MAKE) -C$(SRC)/Common/ScriptureUtils clean
-
-common-ScrUtilsInterfaces:
-	$(MAKE) -C$(SRC)/Common/ScrUtilsInterfaces all
-common-ScrUtilsInterfaces-clean:
-	$(MAKE) -C$(SRC)/Common/ScrUtilsInterfaces clean
-
-common-Controls-FwControls:
-	$(MAKE) -C$(SRC)/Common/Controls/FwControls all
-common-Controls-FwControls-clean:
-	$(MAKE) -C$(SRC)/Common/Controls/FwControls clean
-
-common-Controls-Design:
-	$(MAKE) -C$(SRC)/Common/Controls/Design all
-common-Controls-Design-clean:
-	$(MAKE) -C$(SRC)/Common/Controls/Design clean
-
-Utilities-BasicUtils:
-	$(MAKE) -C$(SRC)/Utilities/BasicUtils all
-Utilities-BasicUtils-clean:
-	$(MAKE) -C$(SRC)/Utilities/BasicUtils clean
-
-Utilities-MessageBoxExLib:
-	$(MAKE) -C$(SRC)/Utilities/MessageBoxExLib all
-Utilities-MessageBoxExLib-clean:
-	$(MAKE) -C$(SRC)/Utilities/MessageBoxExLib clean
-
-Utilities-XMLUtils:
-	$(MAKE) -C$(SRC)/Utilities/XMLUtils all
-Utilities-XMLUtils-clean:
-	$(MAKE) -C$(SRC)/Utilities/XMLUtils clean
-
-Utilities-Reporting:
-	$(MAKE) -C$(SRC)/Utilities/Reporting all
-Utilities-Reporting-clean:
-	$(MAKE) -C$(SRC)/Utilities/Reporting clean
-
-FDO:
-	$(MAKE) -C$(SRC)/FDO all
-FDO-clean:
-	$(MAKE) -C$(SRC)/FDO clean
-
-FwResources:
-	$(MAKE) -C$(SRC)/FwResources all
-FwResources-clean:
-	$(MAKE) -C$(SRC)/FwResources clean
-
-FwCoreDlgsGTK:
-	$(MAKE) -C$(SRC)/FwCoreDlgsGTK all
-FwCoreDlgsGTK-clean:
-	 $(MAKE) -C$(SRC)/FwCoreDlgsGTK clean
-
-FwCoreDlgGTKWidgets:
-	$(MAKE) -C$(SRC)/FwCoreDlgGTKWidgets all
-FwCoreDlgGTKWidgets-clean:
-	$(MAKE) -C$(SRC)/FwCoreDlgGTKWidgets clean
-
-FwCoreDlgs-FwCoreDlgControls:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/FwCoreDlgControls all
-FwCoreDlgs-FwCoreDlgControls-clean:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/FwCoreDlgControls clean
-
-FwCoreDlgs-FwCoreDlgControlsGTK:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/FwCoreDlgControlsGTK all
-FwCoreDlgs-FwCoreDlgControlsGTK-clean:
-	$(MAKE) -C$(SRC)/FwCoreDlgs/FwCoreDlgControlsGTK clean
-
-FwCoreDlgs:
-	$(MAKE) -C$(SRC)/FwCoreDlgs all
-FwCoreDlgs-clean:
-	$(MAKE) -C$(SRC)/FwCoreDlgs clean
-
-LangInst:
-	$(MAKE) -C$(SRC)/LangInst all
-LangInst-clean:
-	$(MAKE) -C$(SRC)/LangInst clean
-
-DbAccess-all: DbAccess-nodep
-DbAccess: DbAccess-nodep
-DbAccess-nodep:
-	$(MAKE) -C$(SRC)/DbAccessFirebird all
-DbAccess-clean:
-	$(MAKE) -C$(SRC)/DbAccessFirebird clean
-
-XCore-Interfaces:
-	$(MAKE) -C$(SRC)/XCore/xCoreInterfaces all
-XCore-Interfaces-clean:
-	$(MAKE) -C$(SRC)/XCore/xCoreInterfaces clean
-
-XCore:
-	$(MAKE) -C$(SRC)/XCore all
-XCore-clean:
-	$(MAKE) -C$(SRC)/XCore clean
-
-IDLImp-package:
-	$(MAKE) -C$(BUILD_ROOT)/Bin/src/IDLImp package
-IDLImp-clean:
-	$(MAKE) -C$(BUILD_ROOT)/Bin/src/IDLImp clean
-
 Unit++-package: unit++-all
 
 Unit++-clean: unit++-clean
-
-# We don't want CodeGen to be built by default. This messes things up if cmcg.exe gets checked
-# in accidentally. Besides we currently don't use it, so I don't see a need for building it.
-CodeGen:
-	$(MAKE) -C$(BUILD_ROOT)/Bin/src/CodeGen
-	# Put the cmcg executable where xbuild/msbuild is expecting it (cm.build.xml). Only do the cp if
-	# the source file is newer than the target file, or if the target doesn't exist.
-	if [ ! -e $(BUILD_ROOT)/Bin/cmcg.exe ] || \
-		[ $(BUILD_ROOT)/Bin/src/CodeGen/CodeGen -nt $(BUILD_ROOT)/Bin/cmcg.exe ]; then \
-		cp -p $(BUILD_ROOT)/Bin/src/CodeGen/CodeGen $(BUILD_ROOT)/Bin/cmcg.exe; fi
-
-CodeGen-clean:
-	$(MAKE) -C$(BUILD_ROOT)/Bin/src/CodeGen clean
-	rm -f $(BUILD_ROOT)/Bin/cmcg.exe
-
-teckit:
-	if [ ! -e "$(OUT_DIR)/libTECkit_x86.so" ] || \
-		[ "$(BUILD_ROOT)/DistFiles/Linux/libTECkit_x86.so" -nt "$(OUT_DIR)/libTECkit_x86.so" ]; then \
-		mkdir -p $(OUT_DIR); \
-		cp -p "$(BUILD_ROOT)/DistFiles/Linux/libTECkit_x86.so" "$(OUT_DIR)/libTECkit_x86.so"; fi
-	if [ ! -e "$(OUT_DIR)/libTECkit_Compiler_x86.so" ] || \
-		[ "$(BUILD_ROOT)/DistFiles/Linux/libTECkit_Compiler_x86.so" -nt "$(OUT_DIR)/libTECkit_Compiler_x86.so" ]; then \
-		mkdir -p $(OUT_DIR); \
-		cp -p "$(BUILD_ROOT)/DistFiles/Linux/libTECkit_Compiler_x86.so" "$(OUT_DIR)/libTECkit_Compiler_x86.so"; fi
-
-teckit-clean:
-	rm -f $(OUT_DIR)/libTECkit_x86.so $(OUT_DIR)/libTECkit_Compiler_x86.so
 
 ComponentsMap: COM-all COM-install libFwKernel libLanguage libViews libCellar DbAccess ComponentsMap-nodep
 
@@ -679,68 +357,33 @@ ComponentsMap-nodep:
 ComponentsMap-clean:
 	$(RM) $(OUT_DIR)/components.map
 
-install-between-DistFiles:
-	(cd $(OUT_DIR) && cp -pf ../../DistFiles/UIAdapters-simple.dll TeUIAdapters.dll)
-	(cd DistFiles && cp -pf $(OUT_DIR)/FwResources.dll .)
-	-(cd DistFiles && cp -pf $(OUT_DIR)/TeResources.dll .)
-	(cd $(OUT_DIR) && ln -sf ../../DistFiles/Language\ Explorer/Configuration/ContextHelp.xml contextHelp.xml)
-
-uninstall-between-DistFiles:
-	rm $(OUT_DIR)/TeUIAdapters.dll
-	rm DistFiles/FwResources.dll
-	rm DistFiles/TeResources.dll
-
-# // TODO-Linux: delete all C# makefiles and replace with xbuild/msbuild calls
-BasicUtils-Nant-Build:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:BasicUtils)
-
-Te-Nant-Build:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:allTe)
-
-Te-Nant-Run:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:allTe /property:action=test)
-
-Flex-Nant-Build:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:LexTextExe)
-
-Flex-Nant-Run:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:LexTextExe /property:action=test)
-
-TE: linktoOutputDebug tlbs-copy teckit externaltargets Te-Nant-Build install install-strings ComponentsMap-nodep Te-Nant-Run
-
-Flex: linktoOutputDebug tlbs-copy externaltargets Flex-Nant-Build install-strings ComponentsMap-nodep Flex-Nant-Run
-
-Fw:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:remakefw /property:action=test)
-
-Fw-build:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:remakefw)
-
-# Import certificates so mono applications can check ssl certificates, specifically when a build task
-# downloads dependency dlls. Output md5sum of certificates imported for the record.
-InstallCerts:
-	cd $$(mktemp -d) \
-		&& wget -q -O certdata.txt "http://mxr.mozilla.org/seamonkey/source/security/nss/lib/ckfw/builtins/certdata.txt?raw=1" \
-		&& md5sum certdata.txt \
-		&& mozroots --import --sync --file certdata.txt
-
-Fw-build-package: InstallCerts
+# As of 2017-03-27, localize is more likely to crash running on mono 3 than to actually have a real localization problem. So try it a few times so that a random crash doesn't fail a packaging job that has been running for over an hour.
+Fw-build-package:
+	. environ && \
 	cd $(BUILD_ROOT)/Build \
-		&& xbuild '/t:build4package;zipLocalizedLists;localize' /property:config=release /property:packaging=yes
+		&& xbuild /t:refreshTargets \
+		&& xbuild '/t:remakefw' /property:config=release /property:Platform=$(PLATFORM) /property:packaging=yes \
+		&& ./multitry xbuild '/t:localize-binaries' /property:config=release /property:packaging=yes
 
-Fw-build-package-fdo: InstallCerts
+Fw-build-package-fdo:
 	cd $(BUILD_ROOT)/Build \
+		&& xbuild /t:refreshTargets \
 		&& xbuild '/t:build4package-fdo' /property:config=release /property:packaging=yes
 
-TE-run: ComponentsMap-nodep
-	(. ./environ && cd $(OUT_DIR) && mono --debug TE.exe -db "$${TE_DATABASE}")
-
 # Begin localization section
+
+localize-source:
+	. environ && \
+	(cd Build && xbuild /t:localize-source /property:config=release /property:packaging=yes)
+	# Remove symbolic links from Output - we don't want those in the source package
+	find Output -type l -delete
+	# Copy localization files to Localizations folder so that they survive a 'clean'
+	cp -a Output Localizations/
 
 LOCALIZATIONS := $(shell ls $(BUILD_ROOT)/Localizations/messages.*.po | sed 's/.*messages\.\(.*\)\.po/\1/')
 
 l10n-all:
-	(cd $(BUILD_ROOT)/Build && xbuild /t:localize)
+	(cd $(BUILD_ROOT)/Build && xbuild /t:localize-binaries)
 
 l10n-clean:
 	# We don't want to remove strings-en.xml

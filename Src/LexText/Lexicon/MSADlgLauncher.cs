@@ -3,14 +3,12 @@
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Forms;
 using SIL.FieldWorks.Common.Framework.DetailControls;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.LexText.Controls;
-using SIL.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks.LexEd
@@ -40,20 +38,18 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// <param name="propertyTable"></param>
 		/// <param name="displayNameProperty"></param>
 		/// <param name="displayWs"></param>
-		public override void Initialize(FdoCache cache, ICmObject obj, int flid, string fieldName,
+		public override void Initialize(LcmCache cache, ICmObject obj, int flid, string fieldName,
 			IPersistenceProvider persistProvider, Mediator mediator, PropertyTable propertyTable, string displayNameProperty, string displayWs)
 		{
 			CheckDisposed();
 
 			base.Initialize(cache, obj, flid, fieldName, persistProvider, mediator, propertyTable, displayNameProperty, displayWs);
-			m_msaDlglauncherView.Init(m_propertyTable.GetValue<FdoCache>("cache"), obj as IMoMorphSynAnalysis);
+			m_msaDlglauncherView.Init(m_propertyTable.GetValue<LcmCache>("cache"), obj as IMoMorphSynAnalysis);
 		}
 
 		/// <summary>
 		/// Handle launching of the MSA editor.
 		/// </summary>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification="FindForm() returns a reference")]
 		protected override void HandleChooser()
 		{
 			using (MsaCreatorDlg dlg = new MsaCreatorDlg())

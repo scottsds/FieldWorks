@@ -1,6 +1,7 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,19 +9,18 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Windows.Forms;
-using System.Xml.Linq;
-using System.Xml.XPath;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FdoUi.Dialogs;
 using SIL.FieldWorks.Filters;
 using XCore;
 using SIL.FieldWorks.FdoUi;
-using SIL.FieldWorks.FDO.DomainServices;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Utils;
 using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks.LexEd
@@ -32,7 +32,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 	/// 2.
 	/// </summary>
 	[MediatorDispose]
-	public class ReversalListener : IxCoreColleague, IFWDisposable
+	public class ReversalListener : IxCoreColleague, IDisposable
 	{
 		/// <summary>
 		/// Mediator that passes off messages.
@@ -155,7 +155,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			m_configurationParameters = configurationParameters;
 			m_mediator.AddColleague(this);
 
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			var wsMgr = cache.ServiceLocator.WritingSystemManager;
 			cache.DomainDataByFlid.BeginNonUndoableTask();
 			var usedWses = new List<CoreWritingSystemDefinition>();
@@ -253,7 +253,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			using (var dlg = new ReversalEntryGoDlg())
 			{
 				dlg.ReversalIndex = Entry.ReversalIndex;
-				var cache = m_propertyTable.GetValue<FdoCache>("cache");
+				var cache = m_propertyTable.GetValue<LcmCache>("cache");
 				dlg.SetDlgInfo(cache, null, m_mediator, m_propertyTable);
 				if (dlg.ShowDialog() == DialogResult.OK)
 				{
@@ -270,7 +270,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			get
 			{
 				IReversalIndexEntry rie = null;
-				string clerkId = XmlUtils.GetManditoryAttributeValue(m_configurationParameters, "clerk");
+				string clerkId = XmlUtils.GetMandatoryAttributeValue(m_configurationParameters, "clerk");
 				string propertyName = RecordClerk.GetCorrespondingPropertyName(clerkId);
 				RecordClerk clerk = m_propertyTable.GetValue<RecordClerk>(propertyName);
 				if (clerk != null)
@@ -299,7 +299,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		#endregion Go Dlg
 
 		#region Reversal Index Combo
-
 		/// <summary>
 		/// Called (by xcore) to control display params of the reversal index menu, e.g. whether it should be enabled.
 		/// </summary>
@@ -330,17 +329,19 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		{
 			CheckDisposed();
 
-			display.List.Clear();
-			var lp = m_propertyTable.GetValue<FdoCache>("cache").LanguageProject;
-			// List all existing reversal indexes.  (LT-4479, as amended)
-			// But only for analysis wss
-			foreach (IReversalIndex ri in from ri in lp.LexDbOA.ReversalIndexesOC
-										  where lp.AnalysisWss.Contains(ri.WritingSystem)
-										  select ri)
+			var configObjectName = XmlUtils.GetOptionalAttributeValue(m_configurationParameters, "configureObjectName", null);
+			configObjectName = "ReversalIndex";
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
+			var reversalIndexConfigurations = SIL.FieldWorks.XWorks.DictionaryConfigurationUtils.GatherBuiltInAndUserConfigurations(cache, configObjectName);
+
+			// Add menu items that display the configuration name and send PropChanges with
+			// the configuration path.
+			foreach(var config in reversalIndexConfigurations)
 			{
-				display.List.Add(ri.ShortName, ri.Guid.ToString(), null, null);
+				display.List.Add(config.Key, config.Value, null, null);
 			}
-			display.List.Sort();
+			DictionaryConfigurationUtils.RemoveAllReversalChoiceFromList(ref display);
+
 			return true; // We handled this, no need to ask anyone else.
 		}
 		#endregion Reversal Index Combo
@@ -412,12 +413,6 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			// This looks like our best chance to update a global "Current Reversal Index Writing System" value.
 			WritingSystemServices.CurrentReversalWsId = Cache.WritingSystemFactory.GetWsFromStr(ri.WritingSystem);
 
-			// Generate and store the expected path to a configuration file specific to this reversal index.  If it doesn't
-			// exist, code elsewhere will make up for it.
-			var layoutName = Path.Combine(FdoFileHelper.GetConfigSettingsDir(Cache.ProjectId.ProjectFolder), "ReversalIndex",
-				ri.ShortName + DictionaryConfigurationModel.FileExtension);
-			m_propertyTable.SetProperty("ReversalIndexPublicationLayout", layoutName, true);
-
 			ICmObject newOwningObj = NewOwningObject(ri);
 			if (newOwningObj != OwningObject)
 			{
@@ -428,6 +423,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 				m_propertyTable.SetPropertyPersistence("ActiveClerkOwningObject", false);
 				m_mediator.SendMessage("ClerkOwningObjChanged", this);
 			}
+			m_mediator.SendMessage("MasterRefresh", null);
 		}
 
 		/// <summary>
@@ -480,7 +476,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 		/// The stored sorter files keep messing us up here, so we need to do a bit of post-deserialization processing.
 		/// </summary>
 		/// <returns>true if we restored something different from what was already there.</returns>
-		protected override bool TryRestoreSorter(XmlNode clerkConfiguration, FdoCache cache)
+		protected override bool TryRestoreSorter(XmlNode clerkConfiguration, LcmCache cache)
 		{
 			var fakevc = new XmlBrowseViewBaseVc { SuppressPictures = true, Cache = Cache }; // SuppressPictures to make sure that we don't leak anything as this will not be disposed.
 			if (base.TryRestoreSorter(clerkConfiguration, cache) && Sorter is GenRecordSorter)
@@ -524,7 +520,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			{
 				window.ClearInvalidatedStoredData();
 			}
-			switch(name)
+			switch (name)
 			{
 				default:
 					base.OnPropertyChanged(name);
@@ -532,7 +528,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 				case "ReversalIndexGuid":
 					ChangeOwningObjectIfPossible();
 					break;
-				case "ToolForAreaNamed_lexicon" :
+				case "ToolForAreaNamed_lexicon":
 					int rootIndex = GetRootIndex(m_list.CurrentIndex);
 					JumpToIndex(rootIndex);
 					base.OnPropertyChanged(name);
@@ -543,6 +539,11 @@ namespace SIL.FieldWorks.XWorks.LexEd
 						ChangeOwningObjectIfPossible();
 					else
 						base.OnPropertyChanged(name);
+					break;
+				case "ReversalIndexPublicationLayout":
+					// When the user chooses a different reversal index configuration from the drop-down menu,
+					// set the list of associated reversal index entries.
+					DictionaryConfigurationUtils.SetReversalIndexGuidBasedOnReversalIndexConfiguration(m_propertyTable, Cache);
 					break;
 			}
 		}
@@ -673,7 +674,7 @@ namespace SIL.FieldWorks.XWorks.LexEd
 			m_mediator.SendMessage("MasterRefresh", null);
 		}
 
-		internal static IReversalIndex ReversalIndexAfterDeletion(FdoCache cache, out int cobjNew)
+		internal static IReversalIndex ReversalIndexAfterDeletion(LcmCache cache, out int cobjNew)
 		{
 			IReversalIndex newIdx;
 			cobjNew = cache.LanguageProject.LexDbOA.ReversalIndexesOC.Count;

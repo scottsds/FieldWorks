@@ -5,11 +5,11 @@
 using System;
 using System.IO;
 using NUnit.Framework;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.FDOTests;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.XWorks;
 using XCore;
 
@@ -33,26 +33,14 @@ namespace SIL.FieldWorks.IText
 			System.Diagnostics.Debug.WriteLineIf(!disposing, "****** Missing Dispose() call for " + GetType().Name + ". ****** ");
 			if (disposing)
 			{
-				if (m_application != null)
-				{
-					m_application.Dispose();
-					m_application = null;
-				}
-				if (m_window != null)
-				{
-					m_window.Dispose();
-					m_window = null;
-				}
-				if (m_mediator != null)
-				{
-					m_mediator.Dispose();
-					m_mediator = null;
-				}
-				if (m_propertyTable != null)
-				{
-					m_propertyTable.Dispose();
-					m_propertyTable = null;
-				}
+				m_application?.Dispose();
+				m_application = null;
+				m_window?.Dispose();
+				m_window = null;
+				m_mediator?.Dispose();
+				m_mediator = null;
+				m_propertyTable?.Dispose();
+				m_propertyTable = null;
 			}
 		}
 
@@ -64,6 +52,12 @@ namespace SIL.FieldWorks.IText
 		public void Dispose()
 		{
 			Dispose(true);
+			// This object will be cleaned up by the Dispose method.
+			// Therefore, you should call GC.SupressFinalize to
+			// take this object off the finalization queue
+			// and prevent finalization code for this object
+			// from executing a second time.
+			GC.SuppressFinalize(this);
 		}
 		#endregion disposal
 
@@ -103,7 +97,7 @@ namespace SIL.FieldWorks.IText
 			m_sttEmptyButWithWs = Cache.ServiceLocator.GetInstance<IStTextFactory>().Create();
 			Cache.ServiceLocator.GetInstance<ITextFactory>().Create().ContentsOA = m_sttEmptyButWithWs;
 			m_sttEmptyButWithWs.AddNewTextPara(null);
-			((IStTxtPara)m_sttEmptyButWithWs.ParagraphsOS[0]).Contents = TsStringUtils.MakeTss(string.Empty, m_wsOtherVern.Handle);
+			((IStTxtPara)m_sttEmptyButWithWs.ParagraphsOS[0]).Contents = TsStringUtils.MakeString(string.Empty, m_wsOtherVern.Handle);
 		}
 
 		[Test]

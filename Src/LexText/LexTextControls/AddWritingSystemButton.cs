@@ -1,12 +1,6 @@
-// Copyright (c) 2010-2013 SIL International
+// Copyright (c) 2010-2017 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: AddWritingSystemButton.cs
-// Responsibility: mcconnel
-//
-// <remarks>
-// </remarks>
 
 using System;
 using System.Collections.Generic;
@@ -15,15 +9,13 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 
-using SIL.CoreImpl;
-using SIL.FieldWorks.Common.COMInterfaces;
+using SIL.LCModel.Core.WritingSystems;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Common.FwUtils;
 using SIL.FieldWorks.Common.RootSites;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.FwCoreDlgs;
-using SIL.Utils;
 
 namespace SIL.FieldWorks.LexText.Controls
 {
@@ -32,15 +24,14 @@ namespace SIL.FieldWorks.LexText.Controls
 	///
 	/// </summary>
 	/// ----------------------------------------------------------------------------------------
-	public partial class AddWritingSystemButton : Button, IFWDisposable
+	public partial class AddWritingSystemButton : Button
 	{
-		FdoCache m_cache;
+		LcmCache m_cache;
 		private HashSet<string> m_existingWsIds;
 		public event EventHandler WritingSystemAdded;
 		CoreWritingSystemDefinition m_wsNew;
 		private IHelpTopicProvider m_helpTopicProvider;
 		private IApp m_app;
-		private IVwStylesheet m_stylesheet;
 
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -63,7 +54,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			InitializeComponent();
 		}
 
-		#region IFWDisposable Members
 		/// <summary>
 		/// Check to see if the object has been disposed.
 		/// All public Properties and Methods should call this
@@ -74,7 +64,6 @@ namespace SIL.FieldWorks.LexText.Controls
 			if (IsDisposed)
 				throw new ObjectDisposedException(String.Format("'{0}' in use after being disposed.", GetType().Name));
 		}
-		#endregion
 
 		/// <summary>
 		/// Initialize for adding new writing systems during import.
@@ -82,25 +71,23 @@ namespace SIL.FieldWorks.LexText.Controls
 		/// <param name="cache">primary FDO data cache</param>
 		/// <param name="helpTopicProvider">The help topic provider.</param>
 		/// <param name="app">The app.</param>
-		/// <param name="stylesheet">The stylesheet.</param>
 		/// <param name="wss">The writing systems already displayed.</param>
-		public void Initialize(FdoCache cache, IHelpTopicProvider helpTopicProvider, IApp app,
-			 IVwStylesheet stylesheet, IEnumerable<CoreWritingSystemDefinition> wss)
+		public void Initialize(LcmCache cache, IHelpTopicProvider helpTopicProvider, IApp app,
+			 IEnumerable<CoreWritingSystemDefinition> wss)
 		{
 			CheckDisposed();
 			m_cache = cache;
 			m_helpTopicProvider = helpTopicProvider;
 			m_app = app;
 			m_existingWsIds = new HashSet<string>(wss.Select(ws => ws.Id).ToList());
-			m_stylesheet = stylesheet;
 		}
 
 		/// <summary>
 		/// Initialize for adding new writing systems.
 		/// </summary>
-		internal void Initialize(FdoCache cache, IHelpTopicProvider helpTopicProvider, IApp app, IVwStylesheet stylesheet)
+		internal void Initialize(LcmCache cache, IHelpTopicProvider helpTopicProvider, IApp app)
 		{
-			Initialize(cache, helpTopicProvider, m_app, stylesheet, cache.ServiceLocator.WritingSystems.AllWritingSystems);
+			Initialize(cache, helpTopicProvider, m_app, cache.ServiceLocator.WritingSystems.AllWritingSystems);
 		}
 
 		protected override void OnPaint(PaintEventArgs e)
@@ -177,7 +164,7 @@ namespace SIL.FieldWorks.LexText.Controls
 			{
 				IEnumerable<CoreWritingSystemDefinition> newWritingSystems;
 				if (WritingSystemPropertiesDialog.ShowNewDialog(FindForm(), m_cache, m_cache.ServiceLocator.WritingSystemManager,
-					m_cache.ServiceLocator.WritingSystems, m_helpTopicProvider, m_app, m_stylesheet, true, null,
+					m_cache.ServiceLocator.WritingSystems, m_helpTopicProvider, m_app, true, null,
 					out newWritingSystems))
 				{
 					ws = newWritingSystems.First();

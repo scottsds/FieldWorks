@@ -1,20 +1,19 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2015-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Cellar;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO.DomainServices;
-using SIL.FieldWorks.FDO.Infrastructure;
+using SIL.LCModel.DomainServices;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel;
 using SIL.Utils;
-using SIL.FieldWorks.FDO;
 using XCore;
 
 namespace SIL.FieldWorks.XWorks
@@ -22,12 +21,13 @@ namespace SIL.FieldWorks.XWorks
 	/// <summary>
 	/// Summary description for AddCustomFieldDlg.
 	/// </summary>
-	public class AddCustomFieldDlg : Form, IFWDisposable
+	public class AddCustomFieldDlg : Form
 	{
 		public enum LocationType
 		{
 			Lexicon,
-			Notebook
+			Notebook,
+			Interlinear
 		}
 
 		private enum CustomFieldType
@@ -57,13 +57,14 @@ namespace SIL.FieldWorks.XWorks
 		// variables for managing the dlg
 		private readonly Mediator m_mediator;
 		private readonly PropertyTable m_propertyTable;
+		private readonly LocationType m_locationType;
 
 		private readonly Inventory m_layouts;
 		private readonly Dictionary<int, ModifiedLabel> m_dictModLabels = new Dictionary<int, ModifiedLabel>();
 
 		private FDWrapper m_fdwCurrentField;
 
-		private readonly FdoCache m_cache;
+		private readonly LcmCache m_cache;
 		private TextBox m_nameTextBox;
 		private readonly List<FDWrapper> m_customFields;
 		private Button m_helpButton;	// list of current custom fields [db and mem]
@@ -99,7 +100,8 @@ namespace SIL.FieldWorks.XWorks
 			// create member variables
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
-			m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_locationType = locationType;
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 			m_layouts = Inventory.GetInventory("layouts", m_cache.ProjectId.Name);
 
 			InitializeComponent();		// form required method
@@ -127,6 +129,9 @@ namespace SIL.FieldWorks.XWorks
 					m_locationComboBox.Items.Add(new IdAndString<int>(MoFormTags.kClassId, xWorksStrings.Allomorph));
 					break;
 
+				case LocationType.Interlinear:
+					m_locationComboBox.Items.Add(new IdAndString<int>(SegmentTags.kClassId, "Segment"));
+					break;
 				case LocationType.Notebook:
 					// If you add classes here which have subclasses,  a change is also needed in BasicCustomPropertyFixer (FixFwDataDll).
 					m_locationComboBox.Items.Add(new IdAndString<int>(RnGenericRecTags.kClassId, xWorksStrings.ksRecord));
@@ -143,12 +148,20 @@ namespace SIL.FieldWorks.XWorks
 			PopulateWritingSystemsList();
 
 			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.SingleLineText, xWorksStrings.ksSingleLineText));
-			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.MultiparagraphText, xWorksStrings.kMultiparagraphText));
-			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.ListRefCollection, xWorksStrings.ksListRefCollection));
-			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.ListRefAtomic, xWorksStrings.ksListRefAtomic));
-			// If you add additional value types here, a change is also needed in BasicCustomPropertyFixer (FixFwDataDll).
-			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.Date, xWorksStrings.ksDate));
-			m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.Number, xWorksStrings.ksNumber));
+			// Additional custom field types are valid if we are not in the text and words area
+			if (locationType != LocationType.Interlinear)
+			{
+				m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.MultiparagraphText,
+					xWorksStrings.kMultiparagraphText));
+				m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.ListRefCollection,
+					xWorksStrings.ksListRefCollection));
+				m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.ListRefAtomic,
+					xWorksStrings.ksListRefAtomic));
+				// If you add additional value types here, a change is also needed in BasicCustomPropertyFixer (FixFwDataDll).
+				m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.Date, xWorksStrings.ksDate));
+				m_typeComboBox.Items.Add(new IdAndString<CustomFieldType>(CustomFieldType.Number, xWorksStrings.ksNumber));
+			}
+
 			m_typeComboBox.SelectedIndex = 0;
 
 			m_listComboBox.Items.AddRange(GetListsComboItems(m_cache, m_propertyTable.GetValue<XmlNode>("WindowConfiguration")).ToArray());
@@ -199,7 +212,8 @@ namespace SIL.FieldWorks.XWorks
 			m_wsComboBox.Items.Add(new IdAndString<int>(WritingSystemServices.kwsAnal, xWorksStrings.FirstAnalysisWs));
 			m_wsComboBox.Items.Add(new IdAndString<int>(WritingSystemServices.kwsVern, xWorksStrings.FirstVernacularWs));
 			if (m_typeComboBox.SelectedItem != null
-				&& ((IdAndString<CustomFieldType>)m_typeComboBox.SelectedItem).Id == CustomFieldType.SingleLineText)
+				&& ((IdAndString<CustomFieldType>)m_typeComboBox.SelectedItem).Id == CustomFieldType.SingleLineText
+				&& m_locationType != LocationType.Interlinear)
 			{
 				m_wsComboBox.Items.Add(new IdAndString<int>(WritingSystemServices.kwsAnals, xWorksStrings.AllAnalysisWs));
 				m_wsComboBox.Items.Add(new IdAndString<int>(WritingSystemServices.kwsVerns, xWorksStrings.AllVernacularWs));
@@ -211,9 +225,7 @@ namespace SIL.FieldWorks.XWorks
 			m_wsComboBox.SelectedIndex = 0;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
-		public static List<IdAndString<Guid>> GetListsComboItems(FdoCache cache, XmlNode windowConfiguration)
+		public static List<IdAndString<Guid>> GetListsComboItems(LcmCache cache, XmlNode windowConfiguration)
 		{
 			var result = new List<IdAndString<Guid>>();
 			var clerks = new Dictionary<string, XmlNode>();
@@ -295,8 +307,6 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="sName"></param>
 		/// <param name="sClassName"></param>
 		/// <returns></returns>
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "In .NET 4.5 XmlNodeList implements IDisposable, but not in 4.0.")]
 		private List<XmlNode> FindAffectedLayouts(string sFieldLabel, string sName, string sClassName)
 		{
 			var xnlResults = new List<XmlNode>();
@@ -527,7 +537,7 @@ namespace SIL.FieldWorks.XWorks
 			return didUpdate;
 		}
 
-		public static bool UpdateCachedObjects(FdoCache cache, FieldDescription fd)
+		public static bool UpdateCachedObjects(LcmCache cache, FieldDescription fd)
 		{
 			// We need to find every instance of a reference from this flid to that custom list and delete it!
 			// I can't figure out any other way of ensuring that EnsureCompleteIncomingRefs doesn't try to refer
@@ -579,7 +589,7 @@ namespace SIL.FieldWorks.XWorks
 					NonUndoableUnitOfWorkHelper.Do(cache.ActionHandlerAccessor, () =>
 					{
 						foreach (var hvo in objsWithDataThisFlid)
-							ddbf.SetObjProp(hvo, flid, FdoCache.kNullHvo);
+							ddbf.SetObjProp(hvo, flid, LcmCache.kNullHvo);
 					});
 
 					fchanged = objsWithDataThisFlid.Any();
@@ -591,7 +601,7 @@ namespace SIL.FieldWorks.XWorks
 			return fchanged;
 		}
 
-		private static bool IsCustomList(FdoCache cache, Guid owningListGuid)
+		private static bool IsCustomList(LcmCache cache, Guid owningListGuid)
 		{
 			// Custom lists are unowned.
 			var list = cache.ServiceLocator.GetInstance<ICmPossibilityListRepository>().GetObject(owningListGuid);
@@ -667,11 +677,11 @@ namespace SIL.FieldWorks.XWorks
 
 			foreach (FDWrapper fdw in m_customFields)
 			{
-				if (CheckForRegularFieldDuplicateName(fdw))
+				if (!fdw.Fd.MarkForDeletion && CheckForRegularFieldDuplicateName(fdw))
 				{
 					var sClassName = GetItem(m_locationComboBox, fdw.Fd.Class).Name;
 					var str1 = string.Format(xWorksStrings.ksCustomFieldMatchesNonCustomField,
-						sClassName, fieldName);
+						sClassName, fdw.Fd.Userlabel);
 					MessageBox.Show(str1, xWorksStrings.LabelAlreadyExists, MessageBoxButtons.OK);
 					m_nameTextBox.Select();  // we want focus on the new CustomFieldName.Text
 					return true;
@@ -702,7 +712,7 @@ namespace SIL.FieldWorks.XWorks
 			{
 				var flid = m_cache.MetaDataCacheAccessor.GetFieldId2(fdw.Fd.Class, fdw.Fd.Userlabel, true);
 			}
-			catch (FDOInvalidFieldException e)
+			catch (LcmInvalidFieldException e)
 			{
 				return false; // this is actually the 'good' case.
 			}
@@ -1321,7 +1331,7 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		private class ModifiedLabel
 		{
-			public ModifiedLabel(FieldDescription fd, string sNewLabel, FdoCache cache)
+			public ModifiedLabel(FieldDescription fd, string sNewLabel, LcmCache cache)
 			{
 				OldLabel = fd.Userlabel;
 				NewLabel = sNewLabel;

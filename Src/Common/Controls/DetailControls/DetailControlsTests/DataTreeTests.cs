@@ -1,18 +1,19 @@
-// Copyright (c) 2015 SIL International
+// Copyright (c) 2016 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 using System.Xml;
 using NUnit.Framework;
-using SIL.CoreImpl;
+using SIL.LCModel.Core.Text;
 using SIL.FieldWorks.Common.FwUtils;
-using SIL.FieldWorks.FDO;
-using SIL.FieldWorks.FDO.FDOTests;
-using SIL.FieldWorks.FDO.Infrastructure;
-using SIL.Utils;
+using SIL.LCModel;
+using SIL.LCModel.Core.Cellar;
+using SIL.LCModel.Infrastructure;
+using SIL.LCModel.Utils;
 using XCore;
 
 namespace SIL.FieldWorks.Common.Framework.DetailControls
@@ -30,6 +31,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		private DataTree m_dtree;
 		private Form m_parent;
 
+		private CustomFieldForTest m_customField;
 		#region Fixture Setup and Teardown
 		internal static Inventory GenerateParts()
 		{
@@ -40,7 +42,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			keyAttrs["part"] = new[] {"id"};
 
 			var parts = new Inventory(new string[] {partDirectory},
-				"*Parts.xml", "/PartInventory/bin/*", keyAttrs, "DetailTreeTests", "ProjectPath");
+				"*Parts.xml", "/PartInventory/bin/*", keyAttrs, "DetailTreeTests", Path.GetTempPath());
 
 			return parts;
 		}
@@ -56,7 +58,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			keyAttrs["part"] = new[] {"ref"};
 
 			var layouts = new Inventory(new[] {partDirectory},
-				"*.fwlayout", "/LayoutInventory/*", keyAttrs, "DetailTreeTests", "ProjectPath");
+				"*.fwlayout", "/LayoutInventory/*", keyAttrs, "DetailTreeTests", Path.GetTempPath());
 
 			return layouts;
 		}
@@ -72,11 +74,13 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 
 			m_layouts = GenerateLayouts();
 			m_parts = GenerateParts();
+			m_customField = new CustomFieldForTest(Cache, "testField", "testField", LexEntryTags.kClassId, CellarPropertyType.String, Guid.Empty);
 
-			NonUndoableUnitOfWorkHelper.Do(m_actionHandler, () =>
+
+				NonUndoableUnitOfWorkHelper.Do(m_actionHandler, () =>
 			{
 				m_entry = Cache.ServiceLocator.GetInstance<ILexEntryFactory>().Create();
-				m_entry.CitationForm.VernacularDefaultWritingSystem = TsStringUtils.MakeTss("rubbish", Cache.DefaultVernWs);
+				m_entry.CitationForm.VernacularDefaultWritingSystem = TsStringUtils.MakeString("rubbish", Cache.DefaultVernWs);
 				// We set both alternatives because currently the default part for Bibliography uses vernacular,
 				// but I think this will probably get fixed. Anyway, this way the test is robust.
 				m_entry.Bibliography.SetAnalysisDefaultWritingSystem("My rubbishy bibliography");
@@ -110,7 +114,6 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 		public override void TestTearDown()
 		{
 			// m_dtree gets disposed from m_parent because it's part of its Controls
-
 			if (m_parent != null)
 			{
 				m_parent.Close();
@@ -128,6 +131,13 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			}
 
 			base.TestTearDown();
+		}
+
+		public override void FixtureTeardown()
+		{
+			base.FixtureTeardown();
+			if(Cache != null && Cache.MainCacheAccessor.MetaDataCache != null)
+				m_customField.Dispose();
 		}
 		#endregion
 
@@ -215,6 +225,28 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			Assert.AreEqual("Bibliography", (m_dtree.Controls[2] as Slice).Label);
 			Assert.AreEqual(0, (m_dtree.Controls[1] as Slice).Indent); // was 1, but indent currently suppressed.
 		}
+
+		/// <summary>Remove duplicate custom field placeholder parts</summary>
+		[Test]
+		public void RemoveDuplicateCustomFields()
+		{
+			m_dtree.Initialize(Cache, false, m_layouts, m_parts);
+			m_dtree.ShowObject(m_entry, "Normal", null, m_entry, false);
+			var template = m_dtree.GetTemplateForObjLayout(m_entry, "Normal", null);
+			var expected = "<layout class=\"LexEntry\" type=\"detail\" name=\"Normal\"><part ref=\"_CustomFieldPlaceholder\" customFields=\"here\" /><part ref=\"Custom\" param=\"testField\" /></layout>";
+			Assert.AreEqual(template.OuterXml, expected, "Exactly one part with a _CustomFieldPlaceholder ref attribute should exist.");
+		}
+
+		[Test]
+		public void BadCustomFieldPlaceHoldersAreCorrected()
+		{
+			m_dtree.Initialize(Cache, false, m_layouts, m_parts);
+			m_dtree.ShowObject(m_entry, "NoRef", null, m_entry, false);
+			var template = m_dtree.GetTemplateForObjLayout(m_entry, "NoRef", null);
+			var expected = "<layout class=\"LexEntry\" type=\"detail\" name=\"NoRef\"><part customFields=\"here\" ref=\"_CustomFieldPlaceholder\" /><part ref=\"Custom\" param=\"testField\" /></layout>";
+			Assert.AreEqual(template.OuterXml, expected, "The previously empty ref on the customFields=\"here\" part should be _CustomFieldPlaceholder.");
+		}
+
 		/// <summary></summary>
 		[Test]
 		[Ignore("Collapsed nodes are currently not implemented")]
@@ -263,7 +295,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			m_entry.SensesOS.Add(sense2);
 			Cache.MainCacheAccessor.SetString(sense2.Hvo,
 				LexSenseTags.kflidScientificName,
-				TsStringUtils.MakeTss("blah blah", Cache.DefaultAnalWs));
+				TsStringUtils.MakeString("blah blah", Cache.DefaultAnalWs));
 
 			m_mediator.Dispose();
 			m_mediator = new Mediator();
@@ -287,8 +319,8 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			m_parent.Dispose();
 			m_parent = null;
 
-			ILexEtymology lm = Cache.ServiceLocator.GetInstance<ILexEtymologyFactory>().Create();
-			m_entry.EtymologyOA = lm;
+			var etymology = Cache.ServiceLocator.GetInstance<ILexEtymologyFactory>().Create();
+			m_entry.EtymologyOS.Add(etymology);
 
 			m_mediator.Dispose();
 			m_mediator = new Mediator();
@@ -303,16 +335,12 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			// Adding an etymology gets us just no more slices so far,
 			// because it doesn't have a form or source
 			Assert.AreEqual(3, m_dtree.Controls.Count);
-			//Assert.AreEqual("Etymology", (m_dtree.Controls[3] as Slice).Label);
 			m_parent.Close();
 			m_parent.Dispose();
 			m_parent = null;
 
-			lm.Source = "source";
-			// Again set both because I'm not sure which it really
-			// should be.
-			lm.Form.VernacularDefaultWritingSystem = TsStringUtils.MakeTss("rubbish", Cache.DefaultVernWs);
-			lm.Form.AnalysisDefaultWritingSystem = TsStringUtils.MakeTss("rubbish", Cache.DefaultAnalWs);
+			etymology.LanguageNotes.AnalysisDefaultWritingSystem = TsStringUtils.MakeString("source language", Cache.DefaultAnalWs);
+			etymology.Form.VernacularDefaultWritingSystem = TsStringUtils.MakeString("rubbish", Cache.DefaultVernWs);
 
 			m_mediator.Dispose();
 			m_mediator = new Mediator();
@@ -327,7 +355,7 @@ namespace SIL.FieldWorks.Common.Framework.DetailControls
 			// When the etymology has something we get two more.
 			Assert.AreEqual(5, m_dtree.Controls.Count);
 			Assert.AreEqual("Form", (m_dtree.Controls[3] as Slice).Label);
-			Assert.AreEqual("Source", (m_dtree.Controls[4] as Slice).Label);
+			Assert.AreEqual("Source Language Notes", (m_dtree.Controls[4] as Slice).Label);
 		}
 	}
 }

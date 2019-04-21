@@ -7,13 +7,12 @@
 // Last reviewed:
 // --------------------------------------------------------------------------------------------
 
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;  //for ImageList
 using System.Reflection;
 using System;
 using System.IO;
-using SIL.Utils;
+using SIL.LCModel.Utils;
 
 namespace XCore
 {
@@ -112,8 +111,6 @@ namespace XCore
 	/// Both the Mediator and the colleague are required in order to meet both expectations,
 	/// so an exception is thrown if either Constructor parameter is null.
 	/// </summary>
-	[SuppressMessage("Gendarme.Rules.Design", "TypesWithDisposableFieldsShouldBeDisposableRule",
-		Justification = "variable is a reference; it is owned by parent")]
 	public class TemporaryColleagueParameter
 	{
 		private Mediator m_mediator;

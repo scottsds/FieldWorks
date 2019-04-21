@@ -1,15 +1,12 @@
-// Copyright (c) 2003-2015 SIL International
+// Copyright (c) 2003-2018 SIL International
 // This software is licensed under the LGPL, version 2.1 or later
 // (http://www.gnu.org/licenses/lgpl-2.1.html)
-//
-// File: TreeBarHandler.cs
-// Authorship History: John Hatton
-// Last reviewed:
 //
 // <remarks>
 //	This class is responsible for populating the XCore tree bar with the records
 //	that are given to it by the RecordClerk.
 // </remarks>
+
 using System;
 using SIL.FieldWorks.FdoUi;
 using XCore;
@@ -18,14 +15,14 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
-using SIL.FieldWorks.FDO;
+using SIL.LCModel;
 using SIL.FieldWorks.Common.Controls;
 using SIL.FieldWorks.Filters;
-using SIL.Utils;
-using SIL.CoreImpl;
-using SIL.FieldWorks.FDO.Infrastructure;
-using System.Diagnostics.CodeAnalysis;
+using SIL.LCModel.Core.Text;
+using SIL.LCModel.Infrastructure;
 using SIL.FieldWorks.Common.FwUtils;
+using SIL.FieldWorks.FwCoreDlgControls;
+using SIL.Utils;
 
 namespace SIL.FieldWorks.XWorks
 {
@@ -33,15 +30,16 @@ namespace SIL.FieldWorks.XWorks
 	/// <summary>
 	/// Responsible for populating the XCore tree bar with the records.
 	/// </summary>
-	public abstract class RecordBarHandler : IFWDisposable
+	public abstract class RecordBarHandler : IDisposable
 	{
 		protected Mediator m_mediator;
 		protected PropertyTable m_propertyTable;
-		protected FdoCache m_cache; // initialized with mediator.
+		protected LcmCache m_cache; // initialized with mediator.
 		protected bool m_expand;
 		protected bool m_hierarchical;
 		protected bool m_includeAbbr;
 		protected string m_bestWS;
+
 
 		// This gets set when we skipped populating the tree bar because it wasn't visible.
 		protected bool m_fOutOfDate = false;
@@ -161,7 +159,7 @@ namespace SIL.FieldWorks.XWorks
 
 			m_mediator = mediator;
 			m_propertyTable = propertyTable;
-			m_cache = m_propertyTable.GetValue<FdoCache>("cache");
+			m_cache = m_propertyTable.GetValue<LcmCache>("cache");
 
 			if (node != null)
 			{
@@ -247,7 +245,7 @@ namespace SIL.FieldWorks.XWorks
 		/// <param name="parentsCollection"></param>
 		protected override void AddSubNodes(ICmObject obj, TreeNodeCollection parentsCollection)
 		{
-			var pss = (ICmPossibility) obj;
+			var pss = (ICmPossibility)obj;
 			foreach (var subPss in pss.SubPossibilitiesOS)
 			{
 				AddTreeNode(subPss, parentsCollection);
@@ -267,8 +265,6 @@ namespace SIL.FieldWorks.XWorks
 			return possibility.OwningFlid != CmPossibilityTags.kflidSubPossibilities;
 		}
 
-		[SuppressMessage("Gendarme.Rules.Correctness", "EnsureLocalDisposalRule",
-			Justification = "ToolStripMenuItems get added to the menu and disposed there")]
 		protected override ContextMenuStrip CreateTreebarContextMenuStrip()
 		{
 			ContextMenuStrip menu = base.CreateTreebarContextMenuStrip();
@@ -276,8 +272,8 @@ namespace SIL.FieldWorks.XWorks
 				&& !(RecordList.OwningObject as ICmPossibilityList).IsSorted)
 			{
 				// Move up and move down items make sense
-				menu.Items.Add(new ToolStripMenuItem(xWorksStrings.MoveUp));
-				menu.Items.Add(new ToolStripMenuItem(xWorksStrings.MoveDown));
+				menu.Items.Add(new DisposableToolStripMenuItem(xWorksStrings.MoveUp));
+				menu.Items.Add(new DisposableToolStripMenuItem(xWorksStrings.MoveDown));
 			}
 			return menu;
 		}
@@ -344,8 +340,8 @@ namespace SIL.FieldWorks.XWorks
 		protected ICmPossibilityRepository m_possRepo;
 
 		TreeView m_tree;
-		int m_typeSize;		// font size for the tree's fonts.
-		// map from writing system to font.
+		int m_typeSize;     // font size for the tree's fonts.
+							// map from writing system to font.
 		readonly Dictionary<int, Font> m_dictFonts = new Dictionary<int, Font>();
 
 		//must have a constructor with no parameters, to use with the dynamic loader.
@@ -450,12 +446,12 @@ namespace SIL.FieldWorks.XWorks
 				return;
 			Font font;
 			var text = GetTreeNodeLabel(currentObject, out font);
-// ReSharper disable RedundantCheckBeforeAssignment
+			// ReSharper disable RedundantCheckBeforeAssignment
 			if (text != node.Text)
 				node.Text = text;
 			if (font != node.NodeFont)
 				node.NodeFont = font;
-// ReSharper restore RedundantCheckBeforeAssignment
+			// ReSharper restore RedundantCheckBeforeAssignment
 		}
 
 		/// <summary>
@@ -492,7 +488,7 @@ namespace SIL.FieldWorks.XWorks
 			{
 				window.TreeBarControl.IsFlatList = false;
 				var tree = (TreeView)window.TreeStyleRecordList;
-				var expandedItems = new Set<int>();
+				var expandedItems = new HashSet<int>();
 				if (m_tree != null && !m_expand)
 					GetExpandedItems(m_tree.Nodes, expandedItems);
 				m_tree = tree;
@@ -503,7 +499,7 @@ namespace SIL.FieldWorks.XWorks
 				ReleaseRecordBar();
 
 				tree.NodeMouseClick += tree_NodeMouseClick;
-				if(editable)
+				if (editable)
 				{
 					tree.MouseDown += tree_MouseDown;
 					tree.MouseMove += tree_MouseMove;
@@ -519,7 +515,7 @@ namespace SIL.FieldWorks.XWorks
 				}
 				tree.AllowDrop = editable;
 				tree.BeginUpdate();
-				window.ClearRecordBarList();	//don't want to directly clear the nodes, because that causes an event to be fired as every single note is removed!
+				window.ClearRecordBarList();    //don't want to directly clear the nodes, because that causes an event to be fired as every single note is removed!
 				m_hvoToTreeNodeTable.Clear();
 
 				// type size must be set before AddTreeNodes is called
@@ -536,13 +532,12 @@ namespace SIL.FieldWorks.XWorks
 					tree.CollapseAll();
 					ExpandItems(tree.Nodes, expandedItems);
 				}
+
 				// Set the selection after expanding/collapsing the tree.  This allows the true
 				// selection to be visible even when the tree is collapsed but the selection is
 				// an internal node.  (See LT-4508.)
 				UpdateSelection(list.CurrentObject);
 				tree.EndUpdate();
-
-				EnsureSelectedNodeVisible(tree);
 			}
 		}
 
@@ -551,7 +546,7 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		/// <param name="treeNodeCollection"></param>
 		/// <param name="expandedItems"></param>
-		private void GetExpandedItems(TreeNodeCollection treeNodeCollection, Set<int> expandedItems)
+		private void GetExpandedItems(TreeNodeCollection treeNodeCollection, HashSet<int> expandedItems)
 		{
 			foreach (TreeNode node in treeNodeCollection)
 			{
@@ -570,7 +565,7 @@ namespace SIL.FieldWorks.XWorks
 		/// </summary>
 		/// <param name="treeNodeCollection"></param>
 		/// <param name="expandedItems"></param>
-		private void ExpandItems(TreeNodeCollection treeNodeCollection, Set<int> expandedItems)
+		private void ExpandItems(TreeNodeCollection treeNodeCollection, HashSet<int> expandedItems)
 		{
 			foreach (TreeNode node in treeNodeCollection)
 			{
@@ -584,7 +579,7 @@ namespace SIL.FieldWorks.XWorks
 
 		protected virtual ContextMenuStrip CreateTreebarContextMenuStrip()
 		{
-			var promoteMenuItem = new ToolStripMenuItem(xWorksStrings.Promote);
+			var promoteMenuItem = new DisposableToolStripMenuItem(xWorksStrings.Promote);
 			var contStrip = new ContextMenuStrip();
 			contStrip.Items.Add(promoteMenuItem);
 			return contStrip;
@@ -622,7 +617,7 @@ namespace SIL.FieldWorks.XWorks
 
 		void tree_Promote()
 		{
-			if (m_clickNode == null)	// LT-5652: don't promote anything
+			if (m_clickNode == null)    // LT-5652: don't promote anything
 				return;
 
 			TreeNode source = m_clickNode;
@@ -650,6 +645,7 @@ namespace SIL.FieldWorks.XWorks
 					tree_moveDown();
 				else if (itemSelected.Equals(xWorksStrings.MoveUp))
 					tree_moveUp();
+
 			}
 		}
 
@@ -735,11 +731,11 @@ namespace SIL.FieldWorks.XWorks
 			var hvoMove = (int)sourceItem.Tag;
 			var hvoDest = 0;
 			int flidDest;
-			var cache = m_propertyTable.GetValue<FdoCache>("cache");
+			var cache = m_propertyTable.GetValue<LcmCache>("cache");
 			var move = cache.ServiceLocator.GetObject(hvoMove);
 			var moveLabel = sourceItem.Text;
 			TreeNodeCollection newSiblings;
-			var tree = (TreeView) sender;
+			var tree = (TreeView)sender;
 			if (destNode == null)
 			{
 				ICmObject dest;
@@ -782,7 +778,7 @@ namespace SIL.FieldWorks.XWorks
 					cache.ActionHandlerAccessor, () =>
 						cache.DomainDataByFlid.MoveOwnSeq(hvoOldOwner, flidSrc, srcIndex, srcIndex,
 														 hvoDest, flidDest, ihvoDest));
-				// Note: use MoveOwningSequence off FdoCache,
+				// Note: use MoveOwningSequence off LcmCache,
 				// so we get propchanges that can be picked up by SyncWatcher (CLE-76)
 				// (Hopefully the propchanges won't cause too much intermediant flicker,
 				// before ListUpdateHelper calls ReloadList())
@@ -898,11 +894,11 @@ namespace SIL.FieldWorks.XWorks
 					xWorksStrings.ksProhibitedMovement, MessageBoxButtons.OK, MessageBoxIcon.Warning);
 				return true;
 			}
-				// if the destination IS the root, that's fine...anything can move there.
+			// if the destination IS the root, that's fine...anything can move there.
 			if (hvoDest == hvoTemplate)
 				return false;
-				// It's OK to move a leaf to a group (one level down from the root, as long as
-				// the destination 'group' isn't a column that's in use.
+			// It's OK to move a leaf to a group (one level down from the root, as long as
+			// the destination 'group' isn't a column that's in use.
 			bool moveColumnIsLeaf = movingColumn.SubPossibilitiesOS.Count == 0;
 			if (m_objRepo.GetObject(hvoDest).Owner.Hvo == hvoTemplate && moveColumnIsLeaf)
 			{
@@ -938,10 +934,10 @@ namespace SIL.FieldWorks.XWorks
 			var item = (LocalDragItem)e.Data.GetData(typeof(LocalDragItem));
 			if (item.SourceNode == destNode)
 				return false;
-			var hvoMove = (int) item.SourceNode.Tag;
+			var hvoMove = (int)item.SourceNode.Tag;
 			int hvoDest = 0;
 			if (destNode != null)
-				hvoDest = (int) destNode.Tag;
+				hvoDest = (int)destNode.Tag;
 			if (hvoDest <= 0)
 				return false;
 			// It must not be that hvoMove owns hvoDest
@@ -958,7 +954,7 @@ namespace SIL.FieldWorks.XWorks
 
 		void tree_MouseDown(object sender, MouseEventArgs e)
 		{
-			var tree = (TreeView) sender;
+			var tree = (TreeView)sender;
 			if (e.Button != MouseButtons.Left)
 			{
 				TreeNode node = tree.GetNodeAt(e.X, e.Y);
@@ -984,7 +980,7 @@ namespace SIL.FieldWorks.XWorks
 			if (tree.SelectedNode == null)
 				return;
 			TreeNode node = tree.SelectedNode;
-			m_clickNode = node;		// use the current selection just incase the
+			m_clickNode = node;     // use the current selection just incase the
 									// user clicks off the list.  LT-5652
 			string label = node.Text;
 			try
@@ -1001,10 +997,10 @@ namespace SIL.FieldWorks.XWorks
 
 		protected virtual void AddTreeNodes(ArrayList sortedObjects, TreeView tree)
 		{
-			foreach(IManyOnePathSortItem item in sortedObjects)
+			foreach (IManyOnePathSortItem item in sortedObjects)
 			{
 				var hvo = item.RootObjectHvo;
-				if(hvo < 0)//was deleted
+				if (hvo < 0)//was deleted
 					continue;
 				var obj = item.RootObjectUsing(m_cache);
 				if (!ShouldAddNode(obj))
@@ -1051,7 +1047,7 @@ namespace SIL.FieldWorks.XWorks
 		protected virtual TreeNode AddTreeNode(ICmObject obj, TreeNodeCollection parentsCollection)
 		{
 			Font font;
-			var node = new TreeNode( GetTreeNodeLabel(obj, out font) ) {Tag = obj.Hvo, NodeFont = font};
+			var node = new TreeNode(GetTreeNodeLabel(obj, out font)) { Tag = obj.Hvo, NodeFont = font };
 			parentsCollection.Add(node);
 			AddToTreeNodeTable(obj.Hvo, node);
 			AddSubNodes(obj, node.Nodes);
@@ -1111,7 +1107,7 @@ namespace SIL.FieldWorks.XWorks
 		}
 		public TreeBarHandler Handler
 		{
-			get {return m_handler; }
+			get { return m_handler; }
 		}
 
 		public TreeNode SourceNode
